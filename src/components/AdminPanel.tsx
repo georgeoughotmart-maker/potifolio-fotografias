@@ -9,8 +9,8 @@ interface Client {
 }
 
 export default function AdminPanel() {
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
-  const [password, setPassword] = useState('none');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [password, setPassword] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
   const [newClientName, setNewClientName] = useState('');
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
@@ -18,10 +18,19 @@ export default function AdminPanel() {
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    if (isLoggedIn) {
-      fetchClients();
+    const savedPass = localStorage.getItem('admin_pass');
+    if (savedPass) {
+      setPassword(savedPass);
+      setIsLoggedIn(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      localStorage.setItem('admin_pass', password);
+      fetchClients();
+    }
+  }, [isLoggedIn]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();

@@ -13,34 +13,50 @@ const PORT = 3000;
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 const CLIENTS_FILE = path.join(process.cwd(), "clients.json");
 
+// On Vercel, we might need to use /tmp for temporary storage
+const IS_VERCEL = !!process.env.VERCEL;
+const STORAGE_PATH = IS_VERCEL ? "/tmp" : process.cwd();
+const VERCEL_UPLOADS = path.join(STORAGE_PATH, "uploads");
+const VERCEL_CLIENTS = path.join(STORAGE_PATH, "clients.json");
+
 // Ensure directories and files exist
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR);
+if (!fs.existsSync(VERCEL_UPLOADS)) {
+  fs.mkdirSync(VERCEL_UPLOADS, { recursive: true });
 }
-if (!fs.existsSync(CLIENTS_FILE)) {
-  fs.writeFileSync(CLIENTS_FILE, JSON.stringify([]));
+if (!fs.existsSync(VERCEL_CLIENTS)) {
+  fs.writeFileSync(VERCEL_CLIENTS, JSON.stringify([]));
 }
 
 app.use(express.json());
 
 // Helper to get clients
-const getClients = () => JSON.parse(fs.readFileSync(CLIENTS_FILE, "utf-8"));
-const saveClients = (clients: any) => fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2));
+const getClients = () => {
+  try {
+    return JSON.parse(fs.readFileSync(VERCEL_CLIENTS, "utf-8"));
+  } catch (e) {
+    return [];
+  }
+};
+const saveClients = (clients: any) => fs.writeFileSync(VERCEL_CLIENTS, JSON.stringify(clients, null, 2));
 
 // Admin Auth Middleware (Simple fixed password)
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  // Password check disabled for preview
-  next();
+  const authHeader = req.headers.authorization;
+  if (authHeader === `Bearer ${ADMIN_PASSWORD}`) {
+    next();
+  } else {
+    res.status(401).json({ error: "Unauthorized" });
+  }
 };
 
 // Multer Config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const { client } = req.params;
-    const clientDir = path.join(UPLOADS_DIR, client);
+    const clientDir = path.join(VERCEL_UPLOADS, client);
     if (!fs.existsSync(clientDir)) {
-      fs.mkdirSync(clientDir);
+      fs.mkdirSync(clientDir, { recursive: true });
     }
     cb(null, clientDir);
   },
@@ -79,9 +95,9 @@ app.post("/api/admin/clients", authMiddleware, (req, res) => {
   clients.push(newClient);
   saveClients(clients);
 
-  const clientDir = path.join(UPLOADS_DIR, clientId);
+  const clientDir = path.join(VERCEL_UPLOADS, clientId);
   if (!fs.existsSync(clientDir)) {
-    fs.mkdirSync(clientDir);
+    fs.mkdirSync(clientDir, { recursive: true });
   }
 
   res.json(newClient);
@@ -99,7 +115,7 @@ app.delete("/api/admin/clients/:id", authMiddleware, (req, res) => {
   clients = clients.filter((c: any) => c.id !== id);
   saveClients(clients);
 
-  const clientDir = path.join(UPLOADS_DIR, id);
+  const clientDir = path.join(VERCEL_UPLOADS, id);
   if (fs.existsSync(clientDir)) {
     fs.rmSync(clientDir, { recursive: true, force: true });
   }
@@ -110,7 +126,7 @@ app.delete("/api/admin/clients/:id", authMiddleware, (req, res) => {
 // Upload Photos
 app.post("/api/admin/upload/:client", authMiddleware, upload.array("photos", 30), (req, res) => {
   const { client } = req.params;
-  const clientDir = path.join(UPLOADS_DIR, client);
+  const clientDir = path.join(VERCEL_UPLOADS, client);
   const files = fs.readdirSync(clientDir);
   
   if (files.length > 30) {
@@ -124,7 +140,7 @@ app.post("/api/admin/upload/:client", authMiddleware, upload.array("photos", 30)
 // Delete Photo
 app.delete("/api/admin/photos/:client/:filename", authMiddleware, (req, res) => {
   const { client, filename } = req.params;
-  const filePath = path.join(UPLOADS_DIR, client, filename);
+  const filePath = path.join(VERCEL_UPLOADS, client, filename);
   
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
@@ -144,7 +160,7 @@ app.get("/api/client/:id", (req, res) => {
     return res.status(404).json({ error: "Cliente não encontrado" });
   }
 
-  const clientDir = path.join(UPLOADS_DIR, id);
+  const clientDir = path.join(VERCEL_UPLOADS, id);
   const photos = fs.existsSync(clientDir) 
     ? fs.readdirSync(clientDir).map(filename => ({
         url: `/api/photos/${id}/${filename}`,
@@ -158,7 +174,7 @@ app.get("/api/client/:id", (req, res) => {
 // Serve Photos Securely
 app.get("/api/photos/:client/:filename", (req, res) => {
   const { client, filename } = req.params;
-  const filePath = path.join(UPLOADS_DIR, client, filename);
+  const filePath = path.join(VERCEL_UPLOADS, client, filename);
 
   if (fs.existsSync(filePath)) {
     // Prevent direct download by setting headers
