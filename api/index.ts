@@ -29,6 +29,14 @@ if (!fs.existsSync(VERCEL_CLIENTS)) {
 
 app.use(express.json());
 
+// Health check for Vercel
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", message: "API is running", timestamp: new Date().toISOString() });
+});
+
+// Admin Auth Middleware (Simple fixed password)
+const getAdminPassword = () => (process.env.ADMIN_PASSWORD || "admin123").trim();
+
 // Verify Password Endpoint
 app.post("/api/admin/verify", (req, res) => {
   const { password } = req.body;
@@ -50,9 +58,6 @@ const getClients = () => {
   }
 };
 const saveClients = (clients: any) => fs.writeFileSync(VERCEL_CLIENTS, JSON.stringify(clients, null, 2));
-
-// Admin Auth Middleware (Simple fixed password)
-const getAdminPassword = () => (process.env.ADMIN_PASSWORD || "admin123").trim();
 
 const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const authHeader = req.headers.authorization;
@@ -201,26 +206,19 @@ app.get("/api/photos/:client/:filename", (req, res) => {
 });
 
 // Vite Integration
-async function startServer() {
-  // Only use Vite middleware in local development
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  }
-
-  // On Vercel, we DON'T serve static files from Express.
-  // Vercel handles the 'dist' folder automatically via vercel.json rewrites.
-
-  if (!process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
+// Only use Vite middleware in local development
+if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: "spa",
+  });
+  app.use(vite.middlewares);
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
 
 export default app;

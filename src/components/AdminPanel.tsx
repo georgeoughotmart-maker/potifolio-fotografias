@@ -34,18 +34,24 @@ export default function AdminPanel() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/admin/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password })
-    });
+    try {
+      const res = await fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
 
-    if (res.ok) {
-      setIsLoggedIn(true);
-      fetchClients();
-    } else {
-      const err = await res.json();
-      alert(err.error || 'Erro ao fazer login');
+      if (res.ok) {
+        setIsLoggedIn(true);
+        fetchClients();
+      } else {
+        const status = res.status;
+        const err = await res.json().catch(() => ({ error: `Erro ${status} no servidor` }));
+        alert(err.error || `Erro ${status}: Senha incorreta`);
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      alert('Não foi possível conectar ao servidor. Verifique se o backend está rodando.');
     }
   };
 
