@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
@@ -205,14 +204,16 @@ app.get("/api/photos/:client/:filename", (req, res) => {
   }
 });
 
-// Vite Integration
-// Only use Vite middleware in local development
+// Vite Integration - Only used locally
 if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: "spa",
+  // Dynamic import to avoid loading Vite on Vercel
+  import("vite").then(async ({ createServer: createViteServer }) => {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
   });
-  app.use(vite.middlewares);
 }
 
 if (!process.env.VERCEL) {
