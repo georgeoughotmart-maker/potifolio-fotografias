@@ -193,13 +193,9 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    app.use(express.static(path.join(process.cwd(), "dist")));
-    // API routes are already handled above, so we just serve index.html for other routes
-    app.get(/^(?!\/api).+/, (req, res) => {
-      res.sendFile(path.join(process.cwd(), "dist", "index.html"));
-    });
   }
+  // In production/Vercel, static files are handled by vercel.json rewrites
+  // so we don't need app.use(express.static) or app.get("*") here
 
   if (!process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {

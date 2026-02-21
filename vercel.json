@@ -1,9 +1,18 @@
 {
   "version": 2,
+  "public": true,
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "/api/server.ts"
+    },
+    {
+      "source": "/admin",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/portfolio/(.*)",
+      "destination": "/index.html"
     },
     {
       "source": "/(.*)",
