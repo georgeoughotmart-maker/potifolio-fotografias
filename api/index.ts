@@ -250,13 +250,17 @@ app.get("/api/photos/:client/:filename", (req, res) => {
 if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
   // Use a string for the import to prevent Vercel from trying to bundle it
   const viteModule = "vite";
-  import(viteModule).then(async ({ createServer: createViteServer }) => {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
+  try {
+    import(viteModule).then(async ({ createServer: createViteServer }) => {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
     });
-    app.use(vite.middlewares);
-  });
+  } catch (e) {
+    console.log("Vite not loaded");
+  }
 }
 
 if (!process.env.VERCEL) {
