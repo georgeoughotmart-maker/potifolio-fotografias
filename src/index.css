@@ -7,9 +7,29 @@
 }
 
 body {
-  background-color: #141414;
+  background-color: #0a0a0a;
   color: #ffffff;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
 }
 
 /* Disable selection and right click globally for images */
@@ -20,6 +40,7 @@ img {
   -o-user-select: none;
   user-select: none;
   -webkit-user-drag: none;
+  pointer-events: auto;
 }
 
 .no-select {

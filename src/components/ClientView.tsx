@@ -19,15 +19,33 @@ export default function ClientView() {
   const [client, setClient] = useState<ClientData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [logo, setLogo] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/client/${clientId}`)
-      .then(res => res.json())
-      .then(data => {
-        setClient(data);
+    const fetchData = async () => {
+      try {
+        const [clientRes, settingsRes] = await Promise.all([
+          fetch(`/api/client/${clientId}`),
+          fetch('/api/settings')
+        ]);
+        
+        if (clientRes.ok) {
+          const clientData = await clientRes.json();
+          setClient(clientData);
+        }
+        
+        if (settingsRes.ok) {
+          const settingsData = await settingsRes.json();
+          setLogo(settingsData.logo);
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
         setLoading(false);
-      })
-      .catch(() => setLoading(false));
+      }
+    };
+    
+    fetchData();
   }, [clientId]);
 
   // Security: Disable right click
@@ -52,38 +70,59 @@ export default function ClientView() {
   );
 
   return (
-    <div className="min-h-screen bg-[#141414] text-white p-4 md:p-8 no-select">
-      <header className="mb-12">
-        <h1 className="text-red-600 text-4xl font-bold font-display tracking-tighter mb-2">CINEPORT</h1>
-        <p className="text-zinc-400 uppercase tracking-widest text-sm font-medium">Portfólio Exclusivo: {client.name}</p>
+    <div className="min-h-screen bg-[#0a0a0a] text-white p-4 md:p-12 no-select font-sans">
+      <header className="mb-16 flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          {logo ? (
+            <img src={logo} alt="Studio Logo" className="h-16 md:h-20 object-contain mb-6" />
+          ) : (
+            <h1 className="text-red-600 text-5xl font-bold font-display tracking-tighter mb-4">STUDIO</h1>
+          )}
+          <div className="h-px w-24 bg-red-600 mb-6" />
+          <h2 className="text-zinc-500 uppercase tracking-[0.3em] text-xs font-bold">Portfólio Exclusivo</h2>
+          <p className="text-3xl md:text-5xl font-display font-light mt-2 tracking-tight">{client.name}</p>
+        </div>
+        <div className="text-right hidden md:block">
+          <p className="text-zinc-600 text-[10px] uppercase tracking-widest">Acesso Privado</p>
+          <p className="text-zinc-400 text-xs font-mono mt-1">{new Date().toLocaleDateString('pt-BR')}</p>
+        </div>
       </header>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
         {client.photos.map((photo, index) => (
           <motion.div
             key={photo.name}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05 }}
-            className="relative aspect-[2/3] group cursor-pointer overflow-hidden rounded-md bg-zinc-900 shadow-lg"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: index * 0.03 }}
+            className="relative aspect-[2/3] group cursor-pointer overflow-hidden rounded-xl bg-zinc-900 shadow-2xl border border-white/5"
             onClick={() => setSelectedPhoto(photo)}
           >
             <img
               src={photo.url}
               alt={photo.name}
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
               loading="lazy"
               draggable={false}
             />
             
-            {/* Number Badge - Enhanced Visibility */}
-            <div className="absolute top-0 left-0 w-full h-12 bg-gradient-to-b from-black/80 to-transparent pointer-events-none z-10" />
-            <div className="absolute top-3 left-3 bg-red-600 text-white text-sm font-bold w-8 h-8 flex items-center justify-center rounded-lg shadow-lg border border-red-500/50 z-20">
-              {index + 1}
+            {/* Branding Overlay on Photo */}
+            {logo && (
+              <div className="absolute bottom-3 right-3 opacity-30 group-hover:opacity-60 transition-opacity pointer-events-none">
+                <img src={logo} alt="" className="h-6 object-contain grayscale brightness-200" />
+              </div>
+            )}
+
+            {/* Number Badge */}
+            <div className="absolute top-0 left-0 w-full h-16 bg-gradient-to-b from-black/80 to-transparent pointer-events-none z-10" />
+            <div className="absolute top-4 left-4 bg-white/10 backdrop-blur-md text-white text-[10px] font-bold w-7 h-7 flex items-center justify-center rounded-full border border-white/20 z-20">
+              {String(index + 1).padStart(2, '0')}
             </div>
 
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <Maximize2 className="text-white w-8 h-8" />
+            <div className="absolute inset-0 bg-red-600/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <div className="bg-white/10 backdrop-blur-xl p-3 rounded-full border border-white/20 transform translate-y-4 group-hover:translate-y-0 transition-transform">
+                <Maximize2 className="text-white w-5 h-5" />
+              </div>
             </div>
           </motion.div>
         ))}
@@ -119,8 +158,16 @@ export default function ClientView() {
               onClick={(e) => e.stopPropagation()}
               draggable={false}
             />
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md px-6 py-2 rounded-full border border-white/10 text-white font-bold">
-              Foto #{client.photos.findIndex(p => p.name === selectedPhoto.name) + 1}
+            
+            {/* Modal Logo Watermark */}
+            {logo && (
+              <div className="absolute bottom-10 right-10 opacity-20 pointer-events-none hidden md:block">
+                <img src={logo} alt="" className="h-12 object-contain grayscale brightness-200" />
+              </div>
+            )}
+
+            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white/5 backdrop-blur-xl px-8 py-3 rounded-full border border-white/10 text-white/80 font-mono text-sm tracking-widest">
+              FOTO #{String(client.photos.findIndex(p => p.name === selectedPhoto.name) + 1).padStart(2, '0')}
             </div>
           </motion.div>
         )}

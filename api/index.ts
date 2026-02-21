@@ -17,6 +17,7 @@ const IS_VERCEL = !!process.env.VERCEL;
 const STORAGE_PATH = IS_VERCEL ? "/tmp" : process.cwd();
 const VERCEL_UPLOADS = path.join(STORAGE_PATH, "uploads");
 const VERCEL_CLIENTS = path.join(STORAGE_PATH, "clients.json");
+const VERCEL_SETTINGS = path.join(STORAGE_PATH, "settings.json");
 
 // Ensure directories and files exist
 if (!fs.existsSync(VERCEL_UPLOADS)) {
@@ -24,6 +25,9 @@ if (!fs.existsSync(VERCEL_UPLOADS)) {
 }
 if (!fs.existsSync(VERCEL_CLIENTS)) {
   fs.writeFileSync(VERCEL_CLIENTS, JSON.stringify([]));
+}
+if (!fs.existsSync(VERCEL_SETTINGS)) {
+  fs.writeFileSync(VERCEL_SETTINGS, JSON.stringify({ logo: null }));
 }
 
 app.use(express.json());
@@ -58,6 +62,16 @@ const getClients = () => {
 };
 const saveClients = (clients: any) => fs.writeFileSync(VERCEL_CLIENTS, JSON.stringify(clients, null, 2));
 
+// Helper for settings
+const getSettings = () => {
+  try {
+    return JSON.parse(fs.readFileSync(VERCEL_SETTINGS, "utf-8"));
+  } catch (e) {
+    return { logo: null };
+  }
+};
+const saveSettings = (settings: any) => fs.writeFileSync(VERCEL_SETTINGS, JSON.stringify(settings, null, 2));
+
 const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const authHeader = req.headers.authorization;
   const currentPassword = getAdminPassword();
@@ -68,6 +82,34 @@ const authMiddleware = (req: express.Request, res: express.Response, next: expre
     res.status(401).json({ error: "Unauthorized" });
   }
 };
+
+// Multer Config for Logo
+const logoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const logoDir = path.join(VERCEL_UPLOADS, "branding");
+    if (!fs.existsSync(logoDir)) {
+      fs.mkdirSync(logoDir, { recursive: true });
+    }
+    cb(null, logoDir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, `logo${path.extname(file.originalname)}`);
+  },
+});
+const uploadLogo = multer({ storage: logoStorage });
+
+// Branding Routes
+app.get("/api/settings", (req, res) => {
+  res.json(getSettings());
+});
+
+app.post("/api/admin/settings/logo", authMiddleware, uploadLogo.single("logo"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  const settings = getSettings();
+  settings.logo = `/api/photos/branding/${req.file.filename}`;
+  saveSettings(settings);
+  res.json(settings);
+});
 
 // Multer Config
 const storage = multer.diskStorage({
