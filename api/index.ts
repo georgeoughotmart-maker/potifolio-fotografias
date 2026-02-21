@@ -248,8 +248,9 @@ app.get("/api/photos/:client/:filename", (req, res) => {
 
 // Vite Integration - Only used locally
 if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-  // Dynamic import to avoid loading Vite on Vercel
-  import("vite").then(async ({ createServer: createViteServer }) => {
+  // Use a string for the import to prevent Vercel from trying to bundle it
+  const viteModule = "vite";
+  import(viteModule).then(async ({ createServer: createViteServer }) => {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
