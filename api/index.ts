@@ -20,14 +20,18 @@ const VERCEL_CLIENTS = path.join(STORAGE_PATH, "clients.json");
 const VERCEL_SETTINGS = path.join(STORAGE_PATH, "settings.json");
 
 // Ensure directories and files exist
-if (!fs.existsSync(VERCEL_UPLOADS)) {
-  fs.mkdirSync(VERCEL_UPLOADS, { recursive: true });
-}
-if (!fs.existsSync(VERCEL_CLIENTS)) {
-  fs.writeFileSync(VERCEL_CLIENTS, JSON.stringify([]));
-}
-if (!fs.existsSync(VERCEL_SETTINGS)) {
-  fs.writeFileSync(VERCEL_SETTINGS, JSON.stringify({ logo: null }));
+try {
+  if (!fs.existsSync(VERCEL_UPLOADS)) {
+    fs.mkdirSync(VERCEL_UPLOADS, { recursive: true });
+  }
+  if (!fs.existsSync(VERCEL_CLIENTS)) {
+    fs.writeFileSync(VERCEL_CLIENTS, JSON.stringify([]));
+  }
+  if (!fs.existsSync(VERCEL_SETTINGS)) {
+    fs.writeFileSync(VERCEL_SETTINGS, JSON.stringify({ logo: null }));
+  }
+} catch (err) {
+  console.error("Initialization error:", err);
 }
 
 app.use(express.json());
