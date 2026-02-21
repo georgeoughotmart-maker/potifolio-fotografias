@@ -29,6 +29,18 @@ if (!fs.existsSync(VERCEL_CLIENTS)) {
 
 app.use(express.json());
 
+// Verify Password Endpoint
+app.post("/api/admin/verify", (req, res) => {
+  const { password } = req.body;
+  const currentPassword = getAdminPassword();
+  
+  if (password === currentPassword) {
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ error: "Senha incorreta" });
+  }
+});
+
 // Helper to get clients
 const getClients = () => {
   try {
@@ -40,10 +52,13 @@ const getClients = () => {
 const saveClients = (clients: any) => fs.writeFileSync(VERCEL_CLIENTS, JSON.stringify(clients, null, 2));
 
 // Admin Auth Middleware (Simple fixed password)
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+const getAdminPassword = () => (process.env.ADMIN_PASSWORD || "admin123").trim();
+
 const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const authHeader = req.headers.authorization;
-  if (authHeader === `Bearer ${ADMIN_PASSWORD}`) {
+  const currentPassword = getAdminPassword();
+  
+  if (authHeader === `Bearer ${currentPassword}`) {
     next();
   } else {
     res.status(401).json({ error: "Unauthorized" });

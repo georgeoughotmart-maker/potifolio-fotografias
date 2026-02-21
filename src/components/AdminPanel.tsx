@@ -32,11 +32,21 @@ export default function AdminPanel() {
     }
   }, [isLoggedIn]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, we'd verify with the server, but here we'll just store the password for headers
-    setIsLoggedIn(true);
-    fetchClients();
+    const res = await fetch('/api/admin/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+
+    if (res.ok) {
+      setIsLoggedIn(true);
+      fetchClients();
+    } else {
+      const err = await res.json();
+      alert(err.error || 'Erro ao fazer login');
+    }
   };
 
   const fetchClients = async () => {
