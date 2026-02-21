@@ -187,6 +187,7 @@ app.get("/api/photos/:client/:filename", (req, res) => {
 
 // Vite Integration
 async function startServer() {
+  // Only use Vite middleware in local development
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -194,8 +195,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   }
-  // In production/Vercel, static files are handled by vercel.json rewrites
-  // so we don't need app.use(express.static) or app.get("*") here
+
+  // On Vercel, we DON'T serve static files from Express.
+  // Vercel handles the 'dist' folder automatically via vercel.json rewrites.
 
   if (!process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
