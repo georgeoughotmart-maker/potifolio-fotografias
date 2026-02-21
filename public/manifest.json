@@ -1,0 +1,17 @@
+{
+  "short_name": "CinePort",
+  "name": "CinePort - Portfólio Privado",
+  "icons": [
+    {
+      "src": "https://picsum.photos/512/512",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#141414",
+  "display": "standalone",
+  "scope": "/",
+  "theme_color": "#000000",
+  "description": "Portfólio de fotos estilo Netflix."
+}
