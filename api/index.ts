@@ -59,18 +59,19 @@ app.get("/api/health", async (req, res) => {
     const url = process.env.SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
     
-    // Debug: List which relevant env vars are present (keys only)
+    // Debug: List all keys found in the system (first 3 chars of each key to find typos)
     const allKeys = Object.keys(process.env);
+    const keyHints = allKeys.map(k => k.substring(0, 4) + (k.length > 4 ? '...' : '')).join(', ');
     const foundKeys = allKeys.filter(k => 
-      k.startsWith('SUPABASE_') || k === 'ADMIN_PASSWORD' || k === 'NODE_ENV' || k.startsWith('VERCEL_')
+      k.toUpperCase().startsWith('SUPA') || k.toUpperCase().includes('PASS') || k === 'NODE_ENV'
     );
 
     if (!url && !key) {
-      errorDetail = `ERRO CRÍTICO: Nenhuma configuração encontrada. Chaves no sistema: ${foundKeys.join(', ') || 'Nenhuma'}. Total de chaves: ${allKeys.length}`;
+      errorDetail = `ERRO CRÍTICO: Chaves Supabase não encontradas. Dicas de chaves no sistema: ${keyHints}. Chaves suspeitas: ${foundKeys.join(', ') || 'Nenhuma'}`;
     } else if (!url) {
-      errorDetail = `ERRO: SUPABASE_URL faltando. Chaves detectadas: ${foundKeys.join(', ')}`;
+      errorDetail = `ERRO: SUPABASE_URL faltando. Chaves suspeitas: ${foundKeys.join(', ')}`;
     } else if (!key) {
-      errorDetail = `ERRO: Chave do Supabase faltando. Chaves detectadas: ${foundKeys.join(', ')}`;
+      errorDetail = `ERRO: Chave do Supabase faltando. Chaves suspeitas: ${foundKeys.join(', ')}`;
     } else {
       const isServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
       const supabase = getSupabase();
