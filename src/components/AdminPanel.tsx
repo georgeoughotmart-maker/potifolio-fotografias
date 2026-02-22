@@ -208,7 +208,7 @@ export default function AdminPanel() {
     }
 
     if (failCount > 0) {
-      alert(`${successCount} fotos enviadas, ${failCount} falharam.\n\nPossíveis causas:\n1. Foto maior que 4.5MB\n2. Formato não suportado (use JPG, PNG ou WEBP)\n3. Limite de 30 fotos atingido`);
+      alert(`Falha no envio!\n\nSucesso: ${successCount}\nFalha: ${failCount}\n\nMotivo provável: Verifique se o bucket 'photos' foi criado no Supabase e se a chave 'service_role' foi configurada nos Secrets.`);
     } else if (successCount > 0) {
       alert('Todas as fotos foram enviadas com sucesso!');
     }
@@ -286,9 +286,31 @@ export default function AdminPanel() {
             </span>
           </div>
           {supabaseStatus === 'error' && supabaseError && (
-            <span className="text-[9px] text-red-500/70 leading-tight ml-4">
-              {supabaseError}
-            </span>
+            <div className="flex flex-col gap-2 ml-4">
+              <span className="text-[9px] text-red-500/70 leading-tight">
+                {supabaseError}
+              </span>
+              {supabaseError.includes('photos') && (
+                <button 
+                  onClick={async () => {
+                    const res = await fetch('/api/admin/setup-storage', {
+                      method: 'POST',
+                      headers: { 'Authorization': `Bearer ${password}` }
+                    });
+                    if (res.ok) {
+                      alert('Storage configurado com sucesso! Recarregando...');
+                      window.location.reload();
+                    } else {
+                      const err = await res.json();
+                      alert('Erro ao configurar: ' + err.error + '\n\nCertifique-se de que a chave SUPABASE_SERVICE_ROLE_KEY está configurada nos Secrets.');
+                    }
+                  }}
+                  className="text-[8px] bg-red-600/20 hover:bg-red-600/40 text-red-500 px-2 py-1 rounded border border-red-500/30 transition-all w-fit uppercase font-bold"
+                >
+                  Consertar Storage
+                </button>
+              )}
+            </div>
           )}
         </div>
         <div className="flex items-center justify-between mb-12">

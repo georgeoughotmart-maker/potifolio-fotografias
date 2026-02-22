@@ -62,16 +62,35 @@ async function startServer() {
       if (!url || !key) {
         errorDetail = "Configuração faltando (URL ou Chave)";
       } else {
+        const isServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
         const supabase = getSupabase();
         if (supabase) {
-          const { error } = await supabase.from('clients').select('id').limit(1);
-          if (error) {
-            errorDetail = `Erro na tabela: ${error.message}`;
-            if (error.code === '42P01') errorDetail = "Tabela 'clients' não encontrada. Execute o SQL de criação.";
+          // Check database
+          const { error: dbError } = await supabase.from('clients').select('id').limit(1);
+          if (dbError) {
+            errorDetail = `Erro na tabela: ${dbError.message}`;
+            if (dbError.code === '42P01') errorDetail = "Tabela 'clients' não encontrada. Execute o SQL de criação.";
           } else {
-            supabaseConnected = true;
+            // Check storage
+            const { data: buckets, error: storageError } = await supabase.storage.listBuckets();
+            if (storageError) {
+              errorDetail = `Erro no Storage: ${storageError.message}`;
+            } else {
+              const photosBucket = buckets?.find(b => b.name === 'photos');
+              if (!photosBucket) {
+                errorDetail = "Bucket 'photos' não encontrado. Crie-o no Storage do Supabase.";
+              } else if (!photosBucket.public) {
+                errorDetail = "O bucket 'photos' precisa ser PUBLIC.";
+              } else if (!isServiceKey) {
+                errorDetail = "Aviso: Usando chave 'anon'. Recomenda-se usar 'service_role' para uploads.";
+                supabaseConnected = true; // Still connected, but with a warning
+              } else {
+                supabaseConnected = true;
+              }
+            }
           }
-        } else {
+        }
+ else {
           errorDetail = "Falha ao inicializar cliente Supabase";
         }
       }
@@ -174,6 +193,31 @@ async function startServer() {
     limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   });
 
+  // Setup Storage Bucket
+  app.post("/api/admin/setup-storage", authMiddleware, async (req, res) => {
+    try {
+      const supabase = getSupabase();
+      if (!supabase) return res.status(503).json({ error: "Supabase não configurado" });
+
+      const { data, error } = await supabase.storage.createBucket('photos', {
+        public: true,
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        fileSizeLimit: 5242880 // 5MB
+      });
+
+      if (error) {
+        // If it already exists, just return success
+        if (error.message.includes('already exists')) {
+          return res.json({ success: true, message: "Bucket já existe" });
+        }
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   // Branding Routes
   app.get("/api/settings", async (req, res) => {
     const settings = await getSettings();
@@ -360,11 +404,22 @@ async function startServer() {
     res.status(500).json({ error: err.message || "Erro interno do servidor" });
   });
 
+  // Export for Vercel
+  if (process.env.NODE_ENV === "production") {
+    return app;
+  }
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+  
+  return app;
 }
 
-startServer().catch(err => {
-  console.error("CRITICAL SERVER ERROR:", err);
-});
+const appPromise = startServer();
+
+// Export the app for Vercel's serverless environment
+export default async (req: any, res: any) => {
+  const app = await appPromise;
+  return app(req, res);
+};
