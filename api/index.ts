@@ -240,17 +240,25 @@ app.delete("/api/admin/photos/:client/:filename", authMiddleware, (req, res) => 
 
 // Public: Get Client Info & Photos
 app.get("/api/client/:id", (req, res) => {
-  const { id } = req.params;
-  console.log(`Fetching client data for: ${id}`);
+  const id = String(req.params.id).trim();
   const clients = getClients();
-  const client = clients.find((c: any) => c.id === id);
+  
+  console.log(`[GET /api/client/${id}] Searching for client...`);
+  console.log(`[GET /api/client/${id}] Total clients in DB: ${clients.length}`);
+  console.log(`[GET /api/client/${id}] Available IDs:`, clients.map((c: any) => String(c.id).trim()));
+
+  const client = clients.find((c: any) => String(c.id).trim().toLowerCase() === id.toLowerCase());
 
   if (!client) {
-    console.warn(`Client not found: ${id}`);
-    return res.status(404).json({ error: "Cliente não encontrado" });
+    console.warn(`[GET /api/client/${id}] Client NOT FOUND`);
+    return res.status(404).json({ 
+      error: "Portfólio não encontrado", 
+      debug: { requestedId: id, availableIds: clients.map((c: any) => c.id) } 
+    });
   }
 
-  const clientDir = path.join(VERCEL_UPLOADS, id);
+  console.log(`[GET /api/client/${id}] Client found: ${client.name}`);
+  const clientDir = path.join(VERCEL_UPLOADS, client.id);
   const photos = fs.existsSync(clientDir) 
     ? fs.readdirSync(clientDir).map(filename => ({
         url: `/api/photos/${id}/${filename}`,

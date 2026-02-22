@@ -21,6 +21,8 @@ export default function ClientView() {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [logo, setLogo] = useState<string | null>(null);
 
+  const [error, setError] = useState<any>(null);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -32,6 +34,9 @@ export default function ClientView() {
         if (clientRes.ok) {
           const clientData = await clientRes.json();
           setClient(clientData);
+        } else {
+          const errData = await clientRes.json();
+          setError(errData);
         }
         
         if (settingsRes.ok) {
@@ -40,6 +45,7 @@ export default function ClientView() {
         }
       } catch (error) {
         console.error('Error fetching data:', error);
+        setError({ error: 'Erro de conexão' });
       } finally {
         setLoading(false);
       }
@@ -58,14 +64,30 @@ export default function ClientView() {
   }, []);
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#141414]">
+    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
       <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
     </div>
   );
 
   if (!client) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#141414] text-white">
-      <h1 className="text-2xl font-display">Portfólio não encontrado</h1>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0a] text-white p-6 text-center">
+      <h1 className="text-3xl font-display font-bold mb-4">Portfólio não encontrado</h1>
+      <p className="text-zinc-500 mb-8 max-w-md">O link que você acessou pode estar incorreto ou o portfólio foi removido.</p>
+      
+      {error?.debug && (
+        <div className="bg-zinc-900/50 p-6 rounded-2xl border border-white/5 text-left font-mono text-xs max-w-lg w-full">
+          <p className="text-red-500 mb-2 uppercase tracking-widest font-bold">Debug Info:</p>
+          <p className="text-zinc-400 mb-1">ID Solicitado: <span className="text-white">{error.debug.requestedId}</span></p>
+          <p className="text-zinc-400">IDs Disponíveis: <span className="text-white">{error.debug.availableIds.join(', ') || 'Nenhum'}</span></p>
+        </div>
+      )}
+      
+      <button 
+        onClick={() => window.location.href = '/admin'}
+        className="mt-10 px-8 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm transition-all"
+      >
+        Voltar para o Início
+      </button>
     </div>
   );
 
