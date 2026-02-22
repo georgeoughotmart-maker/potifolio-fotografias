@@ -241,10 +241,12 @@ app.delete("/api/admin/photos/:client/:filename", authMiddleware, (req, res) => 
 // Public: Get Client Info & Photos
 app.get("/api/client/:id", (req, res) => {
   const { id } = req.params;
+  console.log(`Fetching client data for: ${id}`);
   const clients = getClients();
   const client = clients.find((c: any) => c.id === id);
 
   if (!client) {
+    console.warn(`Client not found: ${id}`);
     return res.status(404).json({ error: "Cliente não encontrado" });
   }
 

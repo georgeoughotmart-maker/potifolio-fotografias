@@ -358,7 +358,15 @@ export default function AdminPanel() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <button 
+                  onClick={() => window.open(`/portfolio/${selectedClient}`, '_blank')}
+                  className="flex items-center gap-3 px-8 py-4 rounded-xl font-bold bg-red-600 text-white hover:bg-red-700 transition-all shadow-xl shadow-red-600/20 active:scale-95"
+                >
+                  <Maximize2 size={20} />
+                  <span className="text-sm">Abrir Portfólio</span>
+                </button>
+
                 <label className={`flex items-center gap-3 px-8 py-4 rounded-xl font-bold cursor-pointer transition-all shadow-xl ${uploading ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-white text-black hover:scale-105 active:scale-95'}`}>
                   <Upload size={20} className={uploading ? 'animate-bounce' : ''} />
                   <span className="text-sm">{uploading ? 'Enviando fotos...' : 'Adicionar Fotos'}</span>
