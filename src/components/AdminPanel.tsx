@@ -144,7 +144,8 @@ export default function AdminPanel() {
     let successCount = 0;
     let failCount = 0;
 
-    for (const file of files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       const formData = new FormData();
       formData.append('photos', file as File);
 
@@ -158,15 +159,25 @@ export default function AdminPanel() {
         if (res.ok) {
           successCount++;
         } else {
+          const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+          console.error('Upload failed:', errorData);
           failCount++;
         }
       } catch (error) {
+        console.error('Upload error:', error);
         failCount++;
+      }
+      
+      // Small delay between uploads to be safe on serverless
+      if (i < files.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
     }
 
     if (failCount > 0) {
-      alert(`${successCount} fotos enviadas, ${failCount} falharam. Verifique o tamanho das fotos (máx 4.5MB por foto no Vercel).`);
+      alert(`${successCount} fotos enviadas, ${failCount} falharam.\n\nPossíveis causas:\n1. Foto maior que 4.5MB\n2. Formato não suportado (use JPG, PNG ou WEBP)\n3. Limite de 30 fotos atingido`);
+    } else if (successCount > 0) {
+      alert('Todas as fotos foram enviadas com sucesso!');
     }
     
     fetchPhotos(selectedClient);
@@ -348,13 +359,13 @@ export default function AdminPanel() {
               </div>
 
               <div className="flex items-center gap-4">
-                <label className={`flex items-center gap-3 px-8 py-4 rounded-xl font-bold cursor-pointer transition-all shadow-xl ${uploading ? 'bg-zinc-800 text-zinc-500' : 'bg-white text-black hover:scale-105 active:scale-95'}`}>
-                  <Upload size={20} />
-                  <span className="text-sm">{uploading ? 'Processando...' : 'Adicionar Fotos'}</span>
+                <label className={`flex items-center gap-3 px-8 py-4 rounded-xl font-bold cursor-pointer transition-all shadow-xl ${uploading ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-white text-black hover:scale-105 active:scale-95'}`}>
+                  <Upload size={20} className={uploading ? 'animate-bounce' : ''} />
+                  <span className="text-sm">{uploading ? 'Enviando fotos...' : 'Adicionar Fotos'}</span>
                   <input 
                     type="file" 
                     multiple 
-                    accept="image/*" 
+                    accept="image/jpeg,image/png,image/webp" 
                     className="hidden" 
                     onChange={handleUpload}
                     disabled={uploading || photos.length >= 30}

@@ -14,16 +14,27 @@ const CLIENTS_FILE = path.join(process.cwd(), "clients.json");
 
 // On Vercel, we might need to use /tmp for temporary storage
 const IS_VERCEL = !!process.env.VERCEL;
-const STORAGE_PATH = IS_VERCEL ? "/tmp" : process.cwd();
+const STORAGE_PATH = IS_VERCEL ? "/tmp/cineport" : process.cwd();
 const VERCEL_UPLOADS = path.join(STORAGE_PATH, "uploads");
 const VERCEL_CLIENTS = path.join(STORAGE_PATH, "clients.json");
 const VERCEL_SETTINGS = path.join(STORAGE_PATH, "settings.json");
 
 // Ensure directories and files exist
 try {
+  console.log(`Initializing storage at: ${STORAGE_PATH}`);
+  if (!fs.existsSync(STORAGE_PATH)) {
+    fs.mkdirSync(STORAGE_PATH, { recursive: true });
+  }
   if (!fs.existsSync(VERCEL_UPLOADS)) {
     fs.mkdirSync(VERCEL_UPLOADS, { recursive: true });
   }
+  
+  // Test writability
+  const testFile = path.join(STORAGE_PATH, ".write-test");
+  fs.writeFileSync(testFile, "test");
+  fs.unlinkSync(testFile);
+  console.log("Storage is writable");
+
   if (!fs.existsSync(VERCEL_CLIENTS)) {
     fs.writeFileSync(VERCEL_CLIENTS, JSON.stringify([]));
   }
@@ -88,19 +99,10 @@ const authMiddleware = (req: express.Request, res: express.Response, next: expre
 };
 
 // Multer Config for Logo
-const logoStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const logoDir = path.join(VERCEL_UPLOADS, "branding");
-    if (!fs.existsSync(logoDir)) {
-      fs.mkdirSync(logoDir, { recursive: true });
-    }
-    cb(null, logoDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `logo${path.extname(file.originalname)}`);
-  },
+const uploadLogo = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 } // 2MB for logo
 });
-const uploadLogo = multer({ storage: logoStorage });
 
 // Branding Routes
 app.get("/api/settings", (req, res) => {
@@ -109,30 +111,27 @@ app.get("/api/settings", (req, res) => {
 
 app.post("/api/admin/settings/logo", authMiddleware, uploadLogo.single("logo"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  
+  const logoDir = path.join(VERCEL_UPLOADS, "branding");
+  if (!fs.existsSync(logoDir)) {
+    fs.mkdirSync(logoDir, { recursive: true });
+  }
+
+  const ext = path.extname(req.file.originalname);
+  const filename = `logo${ext}`;
+  const filePath = path.join(logoDir, filename);
+  
+  fs.writeFileSync(filePath, req.file.buffer);
+
   const settings = getSettings();
-  settings.logo = `/api/photos/branding/${req.file.filename}`;
+  settings.logo = `/api/photos/branding/${filename}`;
   saveSettings(settings);
   res.json(settings);
 });
 
-// Multer Config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const { client } = req.params;
-    const clientDir = path.join(VERCEL_UPLOADS, client);
-    if (!fs.existsSync(clientDir)) {
-      fs.mkdirSync(clientDir, { recursive: true });
-    }
-    cb(null, clientDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
-  },
-});
-
+// Multer Config for Photos
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 4.5 * 1024 * 1024 }, // 4.5MB (Vercel limit)
   fileFilter: (req, file, cb) => {
     const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
@@ -193,19 +192,37 @@ app.delete("/api/admin/clients/:id", authMiddleware, (req, res) => {
 // Upload Photos
 app.post("/api/admin/upload/:client", authMiddleware, upload.array("photos", 30), (req, res) => {
   const { client } = req.params;
-  console.log(`Uploading to client ${client}. Files:`, req.files);
-  const clientDir = path.join(VERCEL_UPLOADS, client);
+  const files = req.files as Express.Multer.File[];
   
+  console.log(`Uploading to client ${client}. Files count:`, files?.length);
+  
+  if (!files || files.length === 0) {
+    return res.status(400).json({ error: "Nenhuma foto enviada" });
+  }
+
+  const clientDir = path.join(VERCEL_UPLOADS, client);
   if (!fs.existsSync(clientDir)) {
     fs.mkdirSync(clientDir, { recursive: true });
   }
 
-  const files = fs.readdirSync(clientDir);
-  if (files.length > 30) {
+  const existingFiles = fs.readdirSync(clientDir);
+  if (existingFiles.length + files.length > 30) {
     return res.status(400).json({ error: "Limite de 30 fotos atingido" });
   }
 
-  res.json({ success: true });
+  try {
+    for (const file of files) {
+      const ext = path.extname(file.originalname);
+      const filename = `${uuidv4()}${ext}`;
+      const filePath = path.join(clientDir, filename);
+      fs.writeFileSync(filePath, file.buffer);
+      console.log(`Saved file: ${filename} to ${clientDir}`);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Upload error:", err);
+    res.status(500).json({ error: "Erro ao salvar fotos" });
+  }
 });
 
 // Delete Photo
@@ -253,6 +270,18 @@ app.get("/api/photos/:client/:filename", (req, res) => {
   } else {
     res.status(404).send("Not found");
   }
+});
+
+// Error handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Global error:", err);
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({ error: "Arquivo muito grande (máx 4.5MB)" });
+    }
+    return res.status(400).json({ error: `Erro no upload: ${err.message}` });
+  }
+  res.status(500).json({ error: err.message || "Erro interno do servidor" });
 });
 
 if (!process.env.VERCEL) {
