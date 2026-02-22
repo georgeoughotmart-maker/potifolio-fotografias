@@ -90,8 +90,16 @@ export default function AdminPanel() {
         fetchClients();
       } else {
         const status = res.status;
-        const err = await res.json().catch(() => ({ error: `Erro ${status} no servidor` }));
-        alert(err.error || `Erro ${status}: Senha incorreta`);
+        let errorMessage = `Erro ${status}: Senha incorreta`;
+        
+        try {
+          const err = await res.json();
+          errorMessage = err.error || errorMessage;
+        } catch (e) {
+          // Fallback if JSON parsing fails
+        }
+        
+        alert(errorMessage);
       }
     } catch (error) {
       console.error('Login error:', error);

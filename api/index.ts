@@ -53,14 +53,22 @@ async function startServer() {
   app.post("/api/admin/verify", (req, res) => {
     try {
       const { password } = req.body;
-      if (password === getAdminPassword()) {
+      const currentPassword = getAdminPassword();
+      
+      console.log("Login attempt received");
+      
+      if (!password) {
+        return res.status(400).json({ error: "Senha é obrigatória" });
+      }
+
+      if (password === currentPassword) {
         res.json({ success: true });
       } else {
         res.status(401).json({ error: "Senha incorreta" });
       }
     } catch (err: any) {
       console.error("Verify error:", err);
-      res.status(500).json({ error: "Erro interno ao verificar senha" });
+      res.status(500).json({ error: "Erro interno no servidor ao verificar senha. Verifique os logs." });
     }
   });
 
