@@ -133,6 +133,8 @@ async function startServer() {
   const getClients = async () => {
     try {
       const supabase = getSupabase();
+      if (!supabase) return [];
+      
       const { data, error } = await supabase
         .from('clients')
         .select('*')
@@ -150,6 +152,8 @@ async function startServer() {
   const getSettings = async () => {
     try {
       const supabase = getSupabase();
+      if (!supabase) return { logo: null };
+
       const { data, error } = await supabase
         .from('settings')
         .select('value')
@@ -181,6 +185,8 @@ async function startServer() {
     
     try {
       const supabase = getSupabase();
+      if (!supabase) return res.status(503).json({ error: "Supabase não configurado" });
+
       const ext = path.extname(req.file.originalname);
       const filename = `branding/logo${ext}`;
       
@@ -214,6 +220,8 @@ async function startServer() {
     
     try {
       const supabase = getSupabase();
+      if (!supabase) return res.status(503).json({ error: "Supabase não configurado" });
+
       const { data, error } = await supabase
         .from('clients')
         .insert([{ id: clientId, name, createdAt: new Date() }])
@@ -239,6 +247,8 @@ async function startServer() {
     
     try {
       const supabase = getSupabase();
+      if (!supabase) return res.status(503).json({ error: "Supabase não configurado" });
+
       // Delete photos from storage first
       const { data: files } = await supabase.storage.from('photos').list(id);
       if (files && files.length > 0) {
@@ -263,6 +273,8 @@ async function startServer() {
 
     try {
       const supabase = getSupabase();
+      if (!supabase) return res.status(503).json({ error: "Supabase não configurado" });
+
       for (const file of files) {
         const ext = path.extname(file.originalname);
         const filename = `${client}/${uuidv4()}${ext}`;
@@ -286,6 +298,8 @@ async function startServer() {
     const { client, filename } = req.params;
     try {
       const supabase = getSupabase();
+      if (!supabase) return res.status(503).json({ error: "Supabase não configurado" });
+
       const { error } = await supabase.storage.from('photos').remove([`${client}/${filename}`]);
       
       if (error) return res.status(500).json({ error: error.message });
@@ -301,6 +315,8 @@ async function startServer() {
     
     try {
       const supabase = getSupabase();
+      if (!supabase) return res.status(503).json({ error: "Serviço temporariamente indisponível (Supabase não configurado)" });
+
       const { data: client, error } = await supabase
         .from('clients')
         .select('*')
