@@ -12,19 +12,32 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Middleware de log para depuração
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+  });
+
   app.use(express.json());
 
   // Supabase Configuration (Lazy Initialization)
   let supabaseClient: any = null;
   const getSupabase = () => {
+    const url = (process.env.SUPABASE_URL || "").trim().replace(/^["']|["']$/g, '');
+    const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "").trim().replace(/^["']|["']$/g, '');
+    
+    if (!url || !key) {
+      console.error(">>> [ERRO] Supabase não configurado. Verifique SUPABASE_URL e SUPABASE_KEY nos Secrets.");
+      return null;
+    }
+
     if (!supabaseClient) {
-      const url = process.env.SUPABASE_URL;
-      const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-      
-      if (!url || !key) {
-        throw new Error("Supabase URL and Key are required. Please configure them in the Secrets panel.");
+      try {
+        supabaseClient = createClient(url, key);
+      } catch (e: any) {
+        console.error(">>> [ERRO] Falha ao criar cliente Supabase:", e.message);
+        return null;
       }
-      supabaseClient = createClient(url, key);
     }
     return supabaseClient;
   };
@@ -32,17 +45,36 @@ async function startServer() {
   // Health check
   app.get("/api/health", async (req, res) => {
     let supabaseConnected = false;
+    let errorDetail = null;
+    
     try {
-      const supabase = getSupabase();
-      const { error } = await supabase.from('clients').select('id').limit(1);
-      supabaseConnected = !error;
-    } catch (e) {
-      supabaseConnected = false;
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+      
+      if (!url || !key) {
+        errorDetail = "Configuração faltando (URL ou Chave)";
+      } else {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { error } = await supabase.from('clients').select('id').limit(1);
+          if (error) {
+            errorDetail = `Erro na tabela: ${error.message}`;
+            if (error.code === '42P01') errorDetail = "Tabela 'clients' não encontrada. Execute o SQL de criação.";
+          } else {
+            supabaseConnected = true;
+          }
+        } else {
+          errorDetail = "Falha ao inicializar cliente Supabase";
+        }
+      }
+    } catch (e: any) {
+      errorDetail = e.message;
     }
     
     res.json({ 
       status: "ok", 
       supabaseConnected,
+      errorDetail,
       timestamp: new Date().toISOString() 
     });
   });
@@ -50,34 +82,26 @@ async function startServer() {
   // Admin Auth Middleware
   const getAdminPassword = () => {
     const pass = (process.env.ADMIN_PASSWORD || "admin123").trim();
-    // Remove quotes if they were added accidentally in the env/secrets
     return pass.replace(/^["']|["']$/g, '');
   };
 
   app.post("/api/admin/verify", (req, res) => {
-    console.log(">>> [API] /api/admin/verify called");
     try {
       const { password } = req.body;
       const currentPassword = getAdminPassword();
       
-      console.log(">>> [API] Received password length:", password?.length);
-      console.log(">>> [API] Expected password length:", currentPassword?.length);
-      
       if (!password) {
-        console.log(">>> [API] Login failed: No password provided");
         return res.status(400).json({ error: "Senha é obrigatória" });
       }
 
       if (password === currentPassword) {
-        console.log(">>> [API] Login successful");
         res.json({ success: true });
       } else {
-        console.log(">>> [API] Login failed: Password mismatch");
         res.status(401).json({ error: "Senha incorreta" });
       }
     } catch (err: any) {
-      console.error(">>> [API] Verify error:", err);
-      res.status(500).json({ error: `Erro interno no servidor: ${err.message}` });
+      console.error("Verify error:", err);
+      res.status(500).json({ error: `Erro interno: ${err.message}` });
     }
   });
 
@@ -310,4 +334,6 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("CRITICAL SERVER ERROR:", err);
+});
