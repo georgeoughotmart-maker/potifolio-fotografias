@@ -58,12 +58,17 @@ async function startServer() {
       const url = process.env.SUPABASE_URL;
       const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
       
+      // Debug: List which relevant env vars are present (keys only)
+      const foundKeys = Object.keys(process.env).filter(k => 
+        k.startsWith('SUPABASE_') || k === 'ADMIN_PASSWORD' || k === 'NODE_ENV'
+      );
+
       if (!url && !key) {
-        errorDetail = "Configuração faltando: URL e Chave não encontradas.";
+        errorDetail = `Configuração faltando: URL e Chave não encontradas. Chaves detectadas: ${foundKeys.join(', ') || 'Nenhuma'}`;
       } else if (!url) {
-        errorDetail = "Configuração faltando: SUPABASE_URL não encontrada.";
+        errorDetail = `Configuração faltando: SUPABASE_URL não encontrada. Chaves detectadas: ${foundKeys.join(', ')}`;
       } else if (!key) {
-        errorDetail = "Configuração faltando: Chave (ANON ou SERVICE_ROLE) não encontrada.";
+        errorDetail = `Configuração faltando: Chave (ANON ou SERVICE_ROLE) não encontrada. Chaves detectadas: ${foundKeys.join(', ')}`;
       } else {
         const isServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
         const supabase = getSupabase();
