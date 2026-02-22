@@ -8,6 +8,15 @@ import { createServer as createViteServer } from "vite";
 
 dotenv.config();
 
+// Global error handlers to prevent process crashes
+process.on('uncaughtException', (err) => {
+  console.error('>>> [CRITICAL] Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('>>> [CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -20,26 +29,25 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Supabase Configuration (Lazy Initialization)
+  // Supabase Configuration (Lazy Initialization with extreme safety)
   let supabaseClient: any = null;
   const getSupabase = () => {
-    const url = (process.env.SUPABASE_URL || "").trim().replace(/^["']|["']$/g, '');
-    const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "").trim().replace(/^["']|["']$/g, '');
-    
-    if (!url || !key) {
-      console.error(">>> [ERRO] Supabase não configurado. Verifique SUPABASE_URL e SUPABASE_KEY nos Secrets.");
-      return null;
-    }
-
-    if (!supabaseClient) {
-      try {
-        supabaseClient = createClient(url, key);
-      } catch (e: any) {
-        console.error(">>> [ERRO] Falha ao criar cliente Supabase:", e.message);
+    try {
+      const url = (process.env.SUPABASE_URL || "").trim().replace(/^["']|["']$/g, '');
+      const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "").trim().replace(/^["']|["']$/g, '');
+      
+      if (!url || !key) {
         return null;
       }
+
+      if (!supabaseClient) {
+        supabaseClient = createClient(url, key);
+      }
+      return supabaseClient;
+    } catch (e) {
+      console.error(">>> [SUPABASE ERROR]", e);
+      return null;
     }
-    return supabaseClient;
   };
 
   // Health check
@@ -81,11 +89,16 @@ async function startServer() {
 
   // Admin Auth Middleware
   const getAdminPassword = () => {
-    const pass = (process.env.ADMIN_PASSWORD || "admin123").trim();
-    return pass.replace(/^["']|["']$/g, '');
+    try {
+      const pass = (process.env.ADMIN_PASSWORD || "admin123").trim();
+      return pass.replace(/^["']|["']$/g, '');
+    } catch (e) {
+      return "admin123";
+    }
   };
 
   app.post("/api/admin/verify", (req, res) => {
+    console.log(">>> [AUTH] Verify attempt");
     try {
       const { password } = req.body;
       const currentPassword = getAdminPassword();
@@ -94,14 +107,16 @@ async function startServer() {
         return res.status(400).json({ error: "Senha é obrigatória" });
       }
 
-      if (password === currentPassword) {
+      if (String(password) === String(currentPassword)) {
+        console.log(">>> [AUTH] Success");
         res.json({ success: true });
       } else {
+        console.log(">>> [AUTH] Failed: Password mismatch");
         res.status(401).json({ error: "Senha incorreta" });
       }
     } catch (err: any) {
-      console.error("Verify error:", err);
-      res.status(500).json({ error: `Erro interno: ${err.message}` });
+      console.error(">>> [AUTH] Error:", err);
+      res.status(500).json({ error: `Erro interno de autenticação: ${err.message}` });
     }
   });
 
