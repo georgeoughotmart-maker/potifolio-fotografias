@@ -60,14 +60,14 @@ app.get("/api/health", async (req, res) => {
     const keyHints = allKeys.map(k => k.substring(0, 4) + (k.length > 4 ? '...' : '')).join(', ');
     
     // Agressive search: try to find any key that looks like what we need, regardless of case
-    const supabaseUrlKey = allKeys.find(k => k.toUpperCase() === 'SUPABASE_URL');
-    const supabaseKeyKey = allKeys.find(k => k.toUpperCase() === 'SUPABASE_SERVICE_ROLE_KEY' || k.toUpperCase() === 'SUPABASE_ANON_KEY');
+    const supabaseUrlKey = allKeys.find(k => k.toUpperCase() === 'SUPABASE_URL' || k.toUpperCase() === 'NEXT_PUBLIC_SUPABASE_URL');
+    const supabaseKeyKey = allKeys.find(k => k.toUpperCase() === 'SUPABASE_SERVICE_ROLE_KEY' || k.toUpperCase() === 'SUPABASE_ANON_KEY' || k.toUpperCase() === 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
     
-    const url = (process.env.SUPABASE_URL || (supabaseUrlKey ? process.env[supabaseUrlKey] : null) || "").trim();
-    const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || (supabaseKeyKey ? process.env[supabaseKeyKey] : null) || "").trim();
+    const url = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || (supabaseUrlKey ? process.env[supabaseUrlKey] : null) || "").trim();
+    const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || (supabaseKeyKey ? process.env[supabaseKeyKey] : null) || "").trim();
 
     const foundKeys = allKeys.filter(k => 
-      k.toUpperCase().includes('SUPA') || k.toUpperCase().includes('PASS') || k === 'NODE_ENV'
+      k.toUpperCase().includes('SUPA') || k.toUpperCase().includes('PASS') || k === 'NODE_ENV' || k.toUpperCase().includes('TEST')
     );
 
     if (!url && !key) {
