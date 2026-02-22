@@ -48,27 +48,34 @@ async function startServer() {
   });
 
   // Admin Auth Middleware
-  const getAdminPassword = () => (process.env.ADMIN_PASSWORD || "admin123").trim();
+  const getAdminPassword = () => {
+    const pass = (process.env.ADMIN_PASSWORD || "admin123").trim();
+    // Remove quotes if they were added accidentally in the env/secrets
+    return pass.replace(/^["']|["']$/g, '');
+  };
 
   app.post("/api/admin/verify", (req, res) => {
     try {
       const { password } = req.body;
       const currentPassword = getAdminPassword();
       
-      console.log("Login attempt received");
+      console.log("Login attempt received. Body:", JSON.stringify(req.body));
       
       if (!password) {
+        console.log("Login failed: Password missing in request body");
         return res.status(400).json({ error: "Senha é obrigatória" });
       }
 
       if (password === currentPassword) {
+        console.log("Login successful");
         res.json({ success: true });
       } else {
+        console.log(`Login failed: Password mismatch. Received: ${password}, Expected: ${currentPassword}`);
         res.status(401).json({ error: "Senha incorreta" });
       }
     } catch (err: any) {
       console.error("Verify error:", err);
-      res.status(500).json({ error: "Erro interno no servidor ao verificar senha. Verifique os logs." });
+      res.status(500).json({ error: `Erro interno: ${err.message}` });
     }
   });
 
