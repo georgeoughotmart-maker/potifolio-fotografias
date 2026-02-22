@@ -105,6 +105,7 @@ async function startServer() {
       status: "ok", 
       supabaseConnected,
       errorDetail,
+      version: "1.0.2-debug",
       timestamp: new Date().toISOString() 
     });
   });
