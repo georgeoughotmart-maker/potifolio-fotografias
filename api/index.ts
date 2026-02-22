@@ -50,71 +50,71 @@ async function startServer() {
     }
   };
 
-  // Health check
-  app.get("/api/health", async (req, res) => {
-    let supabaseConnected = false;
-    let errorDetail = null;
+// Health check
+app.get("/api/health", async (req, res) => {
+  let supabaseConnected = false;
+  let errorDetail = null;
+  
+  try {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
     
-    try {
-      const url = process.env.SUPABASE_URL;
-      const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-      
-      // Debug: List which relevant env vars are present (keys only)
-      const foundKeys = Object.keys(process.env).filter(k => 
-        k.startsWith('SUPABASE_') || k === 'ADMIN_PASSWORD' || k === 'NODE_ENV'
-      );
+    // Debug: List which relevant env vars are present (keys only)
+    const allKeys = Object.keys(process.env);
+    const foundKeys = allKeys.filter(k => 
+      k.startsWith('SUPABASE_') || k === 'ADMIN_PASSWORD' || k === 'NODE_ENV' || k.startsWith('VERCEL_')
+    );
 
-      if (!url && !key) {
-        errorDetail = `Configuração faltando: URL e Chave não encontradas. Chaves detectadas: ${foundKeys.join(', ') || 'Nenhuma'}`;
-      } else if (!url) {
-        errorDetail = `Configuração faltando: SUPABASE_URL não encontrada. Chaves detectadas: ${foundKeys.join(', ')}`;
-      } else if (!key) {
-        errorDetail = `Configuração faltando: Chave (ANON ou SERVICE_ROLE) não encontrada. Chaves detectadas: ${foundKeys.join(', ')}`;
-      } else {
-        const isServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-        const supabase = getSupabase();
-        if (supabase) {
-          // Check database
-          const { error: dbError } = await supabase.from('clients').select('id').limit(1);
-          if (dbError) {
-            errorDetail = `Erro na tabela: ${dbError.message}`;
-            if (dbError.code === '42P01') errorDetail = "Tabela 'clients' não encontrada. Execute o SQL de criação.";
+    if (!url && !key) {
+      errorDetail = `ERRO CRÍTICO: Nenhuma configuração encontrada. Chaves no sistema: ${foundKeys.join(', ') || 'Nenhuma'}. Total de chaves: ${allKeys.length}`;
+    } else if (!url) {
+      errorDetail = `ERRO: SUPABASE_URL faltando. Chaves detectadas: ${foundKeys.join(', ')}`;
+    } else if (!key) {
+      errorDetail = `ERRO: Chave do Supabase faltando. Chaves detectadas: ${foundKeys.join(', ')}`;
+    } else {
+      const isServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const supabase = getSupabase();
+      if (supabase) {
+        // Check database
+        const { error: dbError } = await supabase.from('clients').select('id').limit(1);
+        if (dbError) {
+          errorDetail = `Erro na tabela: ${dbError.message}`;
+          if (dbError.code === '42P01') errorDetail = "Tabela 'clients' não encontrada. Execute o SQL de criação.";
+        } else {
+          // Check storage
+          const { data: buckets, error: storageError } = await supabase.storage.listBuckets();
+          if (storageError) {
+            errorDetail = `Erro no Storage: ${storageError.message}`;
           } else {
-            // Check storage
-            const { data: buckets, error: storageError } = await supabase.storage.listBuckets();
-            if (storageError) {
-              errorDetail = `Erro no Storage: ${storageError.message}`;
+            const photosBucket = buckets?.find(b => b.name === 'photos');
+            if (!photosBucket) {
+              errorDetail = "Bucket 'photos' não encontrado. Crie-o no Storage.";
+            } else if (!photosBucket.public) {
+              errorDetail = "O bucket 'photos' precisa ser PUBLIC.";
+            } else if (!isServiceKey) {
+              errorDetail = "Aviso: Usando chave 'anon'. Use 'service_role' para fotos.";
+              supabaseConnected = true;
             } else {
-              const photosBucket = buckets?.find(b => b.name === 'photos');
-              if (!photosBucket) {
-                errorDetail = "Bucket 'photos' não encontrado. Crie-o no Storage do Supabase.";
-              } else if (!photosBucket.public) {
-                errorDetail = "O bucket 'photos' precisa ser PUBLIC.";
-              } else if (!isServiceKey) {
-                errorDetail = "Aviso: Usando chave 'anon'. Recomenda-se usar 'service_role' para uploads.";
-                supabaseConnected = true; // Still connected, but with a warning
-              } else {
-                supabaseConnected = true;
-              }
+              supabaseConnected = true;
             }
           }
         }
- else {
-          errorDetail = "Falha ao inicializar cliente Supabase";
-        }
+      } else {
+        errorDetail = "Falha ao inicializar Supabase (verifique as chaves)";
       }
-    } catch (e: any) {
-      errorDetail = e.message;
     }
-    
-    res.json({ 
-      status: "ok", 
-      supabaseConnected,
-      errorDetail,
-      version: "1.0.2-debug",
-      timestamp: new Date().toISOString() 
-    });
+  } catch (e: any) {
+    errorDetail = "Exceção: " + e.message;
+  }
+  
+  res.json({ 
+    status: "ok", 
+    supabaseConnected,
+    errorDetail,
+    version: "1.0.3-final-debug",
+    timestamp: new Date().toISOString() 
   });
+});
 
   // Admin Auth Middleware
   const getAdminPassword = () => {
