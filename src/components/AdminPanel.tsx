@@ -90,13 +90,19 @@ export default function AdminPanel() {
         fetchClients();
       } else {
         const status = res.status;
-        let errorMessage = `Erro ${status}: Senha incorreta`;
+        let errorMessage = `Erro ${status}`;
         
         try {
-          const err = await res.json();
-          errorMessage = err.error || errorMessage;
+          const text = await res.text();
+          try {
+            const err = JSON.parse(text);
+            errorMessage = err.error || `Erro ${status}: Senha incorreta`;
+          } catch (e) {
+            // If not JSON, show the first 100 chars of the response
+            errorMessage = `Erro ${status}: ${text.slice(0, 100)}...`;
+          }
         } catch (e) {
-          // Fallback if JSON parsing fails
+          errorMessage = `Erro ${status}: Não foi possível ler a resposta do servidor.`;
         }
         
         alert(errorMessage);

@@ -12,6 +12,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(express.json());
+
   // Supabase Configuration (Lazy Initialization)
   let supabaseClient: any = null;
   const getSupabase = () => {
@@ -26,8 +28,6 @@ async function startServer() {
     }
     return supabaseClient;
   };
-
-  app.use(express.json());
 
   // Health check
   app.get("/api/health", async (req, res) => {
@@ -55,27 +55,29 @@ async function startServer() {
   };
 
   app.post("/api/admin/verify", (req, res) => {
+    console.log(">>> [API] /api/admin/verify called");
     try {
       const { password } = req.body;
       const currentPassword = getAdminPassword();
       
-      console.log("Login attempt received. Body:", JSON.stringify(req.body));
+      console.log(">>> [API] Received password length:", password?.length);
+      console.log(">>> [API] Expected password length:", currentPassword?.length);
       
       if (!password) {
-        console.log("Login failed: Password missing in request body");
+        console.log(">>> [API] Login failed: No password provided");
         return res.status(400).json({ error: "Senha é obrigatória" });
       }
 
       if (password === currentPassword) {
-        console.log("Login successful");
+        console.log(">>> [API] Login successful");
         res.json({ success: true });
       } else {
-        console.log(`Login failed: Password mismatch. Received: ${password}, Expected: ${currentPassword}`);
+        console.log(">>> [API] Login failed: Password mismatch");
         res.status(401).json({ error: "Senha incorreta" });
       }
     } catch (err: any) {
-      console.error("Verify error:", err);
-      res.status(500).json({ error: `Erro interno: ${err.message}` });
+      console.error(">>> [API] Verify error:", err);
+      res.status(500).json({ error: `Erro interno no servidor: ${err.message}` });
     }
   });
 
