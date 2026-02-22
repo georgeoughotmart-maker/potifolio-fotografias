@@ -133,7 +133,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 4.5 * 1024 * 1024 }, // 4.5MB (Vercel limit)
   fileFilter: (req, file, cb) => {
     const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
     if (allowedTypes.includes(file.mimetype)) {
@@ -148,6 +148,7 @@ const upload = multer({
 
 // Create Client
 app.post("/api/admin/clients", authMiddleware, (req, res) => {
+  console.log("Creating client:", req.body.name);
   const { name } = req.body;
   const clients = getClients();
   
@@ -176,6 +177,7 @@ app.get("/api/admin/clients", authMiddleware, (req, res) => {
 // Delete Client
 app.delete("/api/admin/clients/:id", authMiddleware, (req, res) => {
   const { id } = req.params;
+  console.log("Deleting client:", id);
   let clients = getClients();
   clients = clients.filter((c: any) => c.id !== id);
   saveClients(clients);
@@ -191,11 +193,15 @@ app.delete("/api/admin/clients/:id", authMiddleware, (req, res) => {
 // Upload Photos
 app.post("/api/admin/upload/:client", authMiddleware, upload.array("photos", 30), (req, res) => {
   const { client } = req.params;
+  console.log(`Uploading to client ${client}. Files:`, req.files);
   const clientDir = path.join(VERCEL_UPLOADS, client);
-  const files = fs.readdirSync(clientDir);
   
+  if (!fs.existsSync(clientDir)) {
+    fs.mkdirSync(clientDir, { recursive: true });
+  }
+
+  const files = fs.readdirSync(clientDir);
   if (files.length > 30) {
-    // Cleanup if somehow exceeded
     return res.status(400).json({ error: "Limite de 30 fotos atingido" });
   }
 

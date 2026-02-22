@@ -140,23 +140,36 @@ export default function AdminPanel() {
     if (!selectedClient || !e.target.files) return;
     
     setUploading(true);
-    const formData = new FormData();
-    Array.from(e.target.files).forEach(file => {
+    const files = Array.from(e.target.files);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const file of files) {
+      const formData = new FormData();
       formData.append('photos', file as File);
-    });
 
-    const res = await fetch(`/api/admin/upload/${selectedClient}`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${password}` },
-      body: formData
-    });
+      try {
+        const res = await fetch(`/api/admin/upload/${selectedClient}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${password}` },
+          body: formData
+        });
 
-    if (res.ok) {
-      fetchPhotos(selectedClient);
-    } else {
-      const err = await res.json();
-      alert(err.error);
+        if (res.ok) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (error) {
+        failCount++;
+      }
     }
+
+    if (failCount > 0) {
+      alert(`${successCount} fotos enviadas, ${failCount} falharam. Verifique o tamanho das fotos (máx 4.5MB por foto no Vercel).`);
+    }
+    
+    fetchPhotos(selectedClient);
     setUploading(false);
   };
 
