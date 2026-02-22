@@ -12,23 +12,32 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Supabase Configuration
-  const supabaseUrl = process.env.SUPABASE_URL || "";
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  // Supabase Configuration (Lazy Initialization)
+  let supabaseClient: any = null;
+  const getSupabase = () => {
+    if (!supabaseClient) {
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+      
+      if (!url || !key) {
+        throw new Error("Supabase URL and Key are required. Please configure them in the Secrets panel.");
+      }
+      supabaseClient = createClient(url, key);
+    }
+    return supabaseClient;
+  };
 
   app.use(express.json());
 
   // Health check
   app.get("/api/health", async (req, res) => {
     let supabaseConnected = false;
-    if (supabaseUrl) {
-      try {
-        const { error } = await supabase.from('clients').select('id').limit(1);
-        supabaseConnected = !error;
-      } catch (e) {
-        supabaseConnected = false;
-      }
+    try {
+      const supabase = getSupabase();
+      const { error } = await supabase.from('clients').select('id').limit(1);
+      supabaseConnected = !error;
+    } catch (e) {
+      supabaseConnected = false;
     }
     
     res.json({ 
@@ -42,11 +51,16 @@ async function startServer() {
   const getAdminPassword = () => (process.env.ADMIN_PASSWORD || "admin123").trim();
 
   app.post("/api/admin/verify", (req, res) => {
-    const { password } = req.body;
-    if (password === getAdminPassword()) {
-      res.json({ success: true });
-    } else {
-      res.status(401).json({ error: "Senha incorreta" });
+    try {
+      const { password } = req.body;
+      if (password === getAdminPassword()) {
+        res.json({ success: true });
+      } else {
+        res.status(401).json({ error: "Senha incorreta" });
+      }
+    } catch (err: any) {
+      console.error("Verify error:", err);
+      res.status(500).json({ error: "Erro interno ao verificar senha" });
     }
   });
 
@@ -61,30 +75,37 @@ async function startServer() {
 
   // Helper to get clients from Supabase
   const getClients = async () => {
-    const { data, error } = await supabase
-      .from('clients')
-      .select('*')
-      .order('createdAt', { ascending: false });
-    
-    if (error) {
-      console.error("Error fetching clients:", error);
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .order('createdAt', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (e) {
+      console.error("Error fetching clients:", e);
       return [];
     }
-    return data || [];
   };
 
   // Helper for settings from Supabase
   const getSettings = async () => {
-    const { data, error } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', 'branding')
-      .single();
-    
-    if (error && error.code !== 'PGRST116') {
-      console.error("Error fetching settings:", error);
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'branding')
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data?.value || { logo: null };
+    } catch (e) {
+      console.error("Error fetching settings:", e);
+      return { logo: null };
     }
-    return data?.value || { logo: null };
   };
 
   // Multer Config
@@ -102,27 +123,32 @@ async function startServer() {
   app.post("/api/admin/settings/logo", authMiddleware, upload.single("logo"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     
-    const ext = path.extname(req.file.originalname);
-    const filename = `branding/logo${ext}`;
-    
-    const { data, error } = await supabase.storage
-      .from('photos')
-      .upload(filename, req.file.buffer, {
-        contentType: req.file.mimetype,
-        upsert: true
-      });
+    try {
+      const supabase = getSupabase();
+      const ext = path.extname(req.file.originalname);
+      const filename = `branding/logo${ext}`;
+      
+      const { data, error } = await supabase.storage
+        .from('photos')
+        .upload(filename, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: true
+        });
 
-    if (error) return res.status(500).json({ error: error.message });
+      if (error) return res.status(500).json({ error: error.message });
 
-    const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(filename);
+      const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(filename);
 
-    const { error: dbError } = await supabase
-      .from('settings')
-      .upsert({ key: 'branding', value: { logo: publicUrl } });
+      const { error: dbError } = await supabase
+        .from('settings')
+        .upsert({ key: 'branding', value: { logo: publicUrl } });
 
-    if (dbError) return res.status(500).json({ error: dbError.message });
+      if (dbError) return res.status(500).json({ error: dbError.message });
 
-    res.json({ logo: publicUrl });
+      res.json({ logo: publicUrl });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Create Client
@@ -130,14 +156,19 @@ async function startServer() {
     const { name } = req.body;
     const clientId = uuidv4().slice(0, 8);
     
-    const { data, error } = await supabase
-      .from('clients')
-      .insert([{ id: clientId, name, createdAt: new Date() }])
-      .select()
-      .single();
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase
+        .from('clients')
+        .insert([{ id: clientId, name, createdAt: new Date() }])
+        .select()
+        .single();
 
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Get Clients
@@ -150,16 +181,21 @@ async function startServer() {
   app.delete("/api/admin/clients/:id", authMiddleware, async (req, res) => {
     const { id } = req.params;
     
-    // Delete photos from storage first
-    const { data: files } = await supabase.storage.from('photos').list(id);
-    if (files && files.length > 0) {
-      await supabase.storage.from('photos').remove(files.map(f => `${id}/${f.name}`));
+    try {
+      const supabase = getSupabase();
+      // Delete photos from storage first
+      const { data: files } = await supabase.storage.from('photos').list(id);
+      if (files && files.length > 0) {
+        await supabase.storage.from('photos').remove(files.map(f => `${id}/${f.name}`));
+      }
+
+      const { error } = await supabase.from('clients').delete().eq('id', id);
+      if (error) return res.status(500).json({ error: error.message });
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
-
-    const { error } = await supabase.from('clients').delete().eq('id', id);
-    if (error) return res.status(500).json({ error: error.message });
-
-    res.json({ success: true });
   });
 
   // Upload Photos
@@ -170,6 +206,7 @@ async function startServer() {
     if (!files || files.length === 0) return res.status(400).json({ error: "Nenhuma foto enviada" });
 
     try {
+      const supabase = getSupabase();
       for (const file of files) {
         const ext = path.extname(file.originalname);
         const filename = `${client}/${uuidv4()}${ext}`;
@@ -191,33 +228,43 @@ async function startServer() {
   // Delete Photo
   app.delete("/api/admin/photos/:client/:filename", authMiddleware, async (req, res) => {
     const { client, filename } = req.params;
-    const { error } = await supabase.storage.from('photos').remove([`${client}/${filename}`]);
-    
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ success: true });
+    try {
+      const supabase = getSupabase();
+      const { error } = await supabase.storage.from('photos').remove([`${client}/${filename}`]);
+      
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Public: Get Client Info & Photos
   app.get("/api/client/:id", async (req, res) => {
     const id = String(req.params.id).trim();
     
-    const { data: client, error } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('id', id)
-      .single();
+    try {
+      const supabase = getSupabase();
+      const { data: client, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-    if (!client || error) {
-      return res.status(404).json({ error: "Portfólio não encontrado" });
+      if (!client || error) {
+        return res.status(404).json({ error: "Portfólio não encontrado" });
+      }
+
+      const { data: files } = await supabase.storage.from('photos').list(id);
+      const photos = (files || []).map(f => ({
+        url: supabase.storage.from('photos').getPublicUrl(`${id}/${f.name}`).data.publicUrl,
+        name: f.name
+      }));
+
+      res.json({ ...client, photos });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
-
-    const { data: files } = await supabase.storage.from('photos').list(id);
-    const photos = (files || []).map(f => ({
-      url: supabase.storage.from('photos').getPublicUrl(`${id}/${f.name}`).data.publicUrl,
-      name: f.name
-    }));
-
-    res.json({ ...client, photos });
   });
 
   // Vite middleware for development
