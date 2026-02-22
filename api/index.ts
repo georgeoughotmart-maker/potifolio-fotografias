@@ -242,30 +242,12 @@ app.get("/api/photos/:client/:filename", (req, res) => {
   const filePath = path.join(VERCEL_UPLOADS, client, filename);
 
   if (fs.existsSync(filePath)) {
-    // Prevent direct download by setting headers
     res.setHeader("Content-Disposition", "inline");
     res.sendFile(filePath);
   } else {
     res.status(404).send("Not found");
   }
 });
-
-// Vite Integration - Only used locally
-if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-  // Use a string for the import to prevent Vercel from trying to bundle it
-  const viteModule = "vite";
-  try {
-    import(viteModule).then(async ({ createServer: createViteServer }) => {
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: "spa",
-      });
-      app.use(vite.middlewares);
-    });
-  } catch (e) {
-    console.log("Vite not loaded");
-  }
-}
 
 if (!process.env.VERCEL) {
   app.listen(PORT, "0.0.0.0", () => {
