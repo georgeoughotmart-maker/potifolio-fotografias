@@ -415,13 +415,11 @@ async function startServer() {
   });
 
   // Export for Vercel
-  if (process.env.NODE_ENV === "production") {
-    return app;
+  if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
   
   return app;
 }
