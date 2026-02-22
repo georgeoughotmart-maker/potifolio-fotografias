@@ -4,7 +4,6 @@ import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
-import { createServer as createViteServer } from "vite";
 
 dotenv.config();
 
@@ -384,14 +383,20 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    // Serve static files in production
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.error("Vite failed to load:", e);
+    }
+  } else if (!process.env.VERCEL) {
+    // Serve static files ONLY if NOT on Vercel
+    // On Vercel, static files are handled by Vercel's native routing
     app.use(express.static(path.join(process.cwd(), "dist")));
     app.get("*", (req, res) => {
       res.sendFile(path.join(process.cwd(), "dist", "index.html"));
