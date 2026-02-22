@@ -405,12 +405,23 @@ app.get("/api/health", async (req, res) => {
     } catch (e) {
       console.error("Vite failed to load:", e);
     }
-  } else if (!process.env.VERCEL) {
-    // Serve static files ONLY if NOT on Vercel
-    // On Vercel, static files are handled by Vercel's native routing
-    app.use(express.static(path.join(process.cwd(), "dist")));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(process.cwd(), "dist", "index.html"));
+  } else {
+    // Serve static files in production (including Vercel)
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    
+    // API routes are already handled above. 
+    // This handles the SPA routing fallback.
+    app.get("*", (req, res, next) => {
+      // If it's an API route that wasn't matched, don't serve index.html
+      if (req.url.startsWith('/api/')) {
+        return next();
+      }
+      res.sendFile(path.join(distPath, "index.html"), (err) => {
+        if (err) {
+          res.status(404).send("Site em construção ou erro no build. Verifique se 'npm run build' funcionou.");
+        }
+      });
     });
   }
 
@@ -420,13 +431,6 @@ app.get("/api/health", async (req, res) => {
     res.status(500).json({ error: err.message || "Erro interno do servidor" });
   });
 
-  // Export for Vercel
-  if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
-  
   return app;
 }
 
@@ -437,3 +441,13 @@ export default async (req: any, res: any) => {
   const app = await appPromise;
   return app(req, res);
 };
+
+// Local development
+if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  appPromise.then(app => {
+    const PORT = 3000;
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  });
+}
