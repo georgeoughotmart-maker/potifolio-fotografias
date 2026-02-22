@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 
+// Load .env if it exists (local dev), but don't fail if it doesn't (Vercel)
 dotenv.config();
 
 // Global error handlers to prevent process crashes
