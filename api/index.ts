@@ -1,296 +1,226 @@
 import express from "express";
 import path from "path";
-import fs from "fs";
 import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import dotenv from "dotenv";
+import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
-const CLIENTS_FILE = path.join(process.cwd(), "clients.json");
 
-// On Vercel, we might need to use /tmp for temporary storage
-const IS_VERCEL = !!process.env.VERCEL;
-const STORAGE_PATH = IS_VERCEL ? "/tmp/cineport" : process.cwd();
-const VERCEL_UPLOADS = path.join(STORAGE_PATH, "uploads");
-const VERCEL_CLIENTS = path.join(STORAGE_PATH, "clients.json");
-const VERCEL_SETTINGS = path.join(STORAGE_PATH, "settings.json");
-
-// Ensure directories and files exist
-try {
-  console.log(`Initializing storage at: ${STORAGE_PATH}`);
-  if (!fs.existsSync(STORAGE_PATH)) {
-    fs.mkdirSync(STORAGE_PATH, { recursive: true });
-  }
-  if (!fs.existsSync(VERCEL_UPLOADS)) {
-    fs.mkdirSync(VERCEL_UPLOADS, { recursive: true });
-  }
-  
-  // Test writability
-  const testFile = path.join(STORAGE_PATH, ".write-test");
-  fs.writeFileSync(testFile, "test");
-  fs.unlinkSync(testFile);
-  console.log("Storage is writable");
-
-  if (!fs.existsSync(VERCEL_CLIENTS)) {
-    fs.writeFileSync(VERCEL_CLIENTS, JSON.stringify([]));
-  }
-  if (!fs.existsSync(VERCEL_SETTINGS)) {
-    fs.writeFileSync(VERCEL_SETTINGS, JSON.stringify({ logo: null }));
-  }
-} catch (err) {
-  console.error("Initialization error:", err);
-}
+// Supabase Configuration
+const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 app.use(express.json());
 
-// Health check for Vercel
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", message: "API is running", timestamp: new Date().toISOString() });
+// Health check
+app.get("/api/health", async (req, res) => {
+  let supabaseConnected = false;
+  if (supabaseUrl) {
+    try {
+      const { error } = await supabase.from('clients').select('id').limit(1);
+      supabaseConnected = !error;
+    } catch (e) {
+      supabaseConnected = false;
+    }
+  }
+  
+  res.json({ 
+    status: "ok", 
+    supabaseConnected,
+    timestamp: new Date().toISOString() 
+  });
 });
 
-// Admin Auth Middleware (Simple fixed password)
+// Admin Auth Middleware
 const getAdminPassword = () => (process.env.ADMIN_PASSWORD || "admin123").trim();
 
-// Verify Password Endpoint
 app.post("/api/admin/verify", (req, res) => {
   const { password } = req.body;
-  const currentPassword = getAdminPassword();
-  
-  if (password === currentPassword) {
+  if (password === getAdminPassword()) {
     res.json({ success: true });
   } else {
     res.status(401).json({ error: "Senha incorreta" });
   }
 });
 
-// Helper to get clients
-const getClients = () => {
-  try {
-    return JSON.parse(fs.readFileSync(VERCEL_CLIENTS, "utf-8"));
-  } catch (e) {
-    return [];
-  }
-};
-const saveClients = (clients: any) => fs.writeFileSync(VERCEL_CLIENTS, JSON.stringify(clients, null, 2));
-
-// Helper for settings
-const getSettings = () => {
-  try {
-    return JSON.parse(fs.readFileSync(VERCEL_SETTINGS, "utf-8"));
-  } catch (e) {
-    return { logo: null };
-  }
-};
-const saveSettings = (settings: any) => fs.writeFileSync(VERCEL_SETTINGS, JSON.stringify(settings, null, 2));
-
 const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const authHeader = req.headers.authorization;
-  const currentPassword = getAdminPassword();
-  
-  if (authHeader === `Bearer ${currentPassword}`) {
+  if (authHeader === `Bearer ${getAdminPassword()}`) {
     next();
   } else {
     res.status(401).json({ error: "Unauthorized" });
   }
 };
 
-// Multer Config for Logo
-const uploadLogo = multer({ 
+// Helper to get clients from Supabase
+const getClients = async () => {
+  const { data, error } = await supabase
+    .from('clients')
+    .select('*')
+    .order('createdAt', { ascending: false });
+  
+  if (error) {
+    console.error("Error fetching clients:", error);
+    return [];
+  }
+  return data || [];
+};
+
+// Helper for settings from Supabase
+const getSettings = async () => {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'branding')
+    .single();
+  
+  if (error && error.code !== 'PGRST116') {
+    console.error("Error fetching settings:", error);
+  }
+  return data?.value || { logo: null };
+};
+
+// Multer Config
+const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 } // 2MB for logo
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 });
 
 // Branding Routes
-app.get("/api/settings", (req, res) => {
-  res.json(getSettings());
-});
-
-app.post("/api/admin/settings/logo", authMiddleware, uploadLogo.single("logo"), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  
-  const logoDir = path.join(VERCEL_UPLOADS, "branding");
-  if (!fs.existsSync(logoDir)) {
-    fs.mkdirSync(logoDir, { recursive: true });
-  }
-
-  const ext = path.extname(req.file.originalname);
-  const filename = `logo${ext}`;
-  const filePath = path.join(logoDir, filename);
-  
-  fs.writeFileSync(filePath, req.file.buffer);
-
-  const settings = getSettings();
-  settings.logo = `/api/photos/branding/${filename}`;
-  saveSettings(settings);
+app.get("/api/settings", async (req, res) => {
+  const settings = await getSettings();
   res.json(settings);
 });
 
-// Multer Config for Photos
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 4.5 * 1024 * 1024 }, // 4.5MB (Vercel limit)
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error("Invalid file type"));
-    }
-  },
+app.post("/api/admin/settings/logo", authMiddleware, upload.single("logo"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  
+  const ext = path.extname(req.file.originalname);
+  const filename = `branding/logo${ext}`;
+  
+  const { data, error } = await supabase.storage
+    .from('photos')
+    .upload(filename, req.file.buffer, {
+      contentType: req.file.mimetype,
+      upsert: true
+    });
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(filename);
+
+  const { error: dbError } = await supabase
+    .from('settings')
+    .upsert({ key: 'branding', value: { logo: publicUrl } });
+
+  if (dbError) return res.status(500).json({ error: dbError.message });
+
+  res.json({ logo: publicUrl });
 });
 
-// API Routes
-
 // Create Client
-app.post("/api/admin/clients", authMiddleware, (req, res) => {
-  console.log("Creating client:", req.body.name);
+app.post("/api/admin/clients", authMiddleware, async (req, res) => {
   const { name } = req.body;
-  const clients = getClients();
-  
-  if (clients.length >= 4) {
-    return res.status(400).json({ error: "Limite de 4 clientes atingido" });
-  }
-
   const clientId = uuidv4().slice(0, 8);
-  const newClient = { id: clientId, name, createdAt: new Date() };
-  clients.push(newClient);
-  saveClients(clients);
+  
+  const { data, error } = await supabase
+    .from('clients')
+    .insert([{ id: clientId, name, createdAt: new Date() }])
+    .select()
+    .single();
 
-  const clientDir = path.join(VERCEL_UPLOADS, clientId);
-  if (!fs.existsSync(clientDir)) {
-    fs.mkdirSync(clientDir, { recursive: true });
-  }
-
-  res.json(newClient);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
 });
 
 // Get Clients
-app.get("/api/admin/clients", authMiddleware, (req, res) => {
-  res.json(getClients());
+app.get("/api/admin/clients", authMiddleware, async (req, res) => {
+  const clients = await getClients();
+  res.json(clients);
 });
 
 // Delete Client
-app.delete("/api/admin/clients/:id", authMiddleware, (req, res) => {
+app.delete("/api/admin/clients/:id", authMiddleware, async (req, res) => {
   const { id } = req.params;
-  console.log("Deleting client:", id);
-  let clients = getClients();
-  clients = clients.filter((c: any) => c.id !== id);
-  saveClients(clients);
-
-  const clientDir = path.join(VERCEL_UPLOADS, id);
-  if (fs.existsSync(clientDir)) {
-    fs.rmSync(clientDir, { recursive: true, force: true });
+  
+  // Delete photos from storage first
+  const { data: files } = await supabase.storage.from('photos').list(id);
+  if (files && files.length > 0) {
+    await supabase.storage.from('photos').remove(files.map(f => `${id}/${f.name}`));
   }
+
+  const { error } = await supabase.from('clients').delete().eq('id', id);
+  if (error) return res.status(500).json({ error: error.message });
 
   res.json({ success: true });
 });
 
 // Upload Photos
-app.post("/api/admin/upload/:client", authMiddleware, upload.array("photos", 30), (req, res) => {
+app.post("/api/admin/upload/:client", authMiddleware, upload.array("photos", 30), async (req, res) => {
   const { client } = req.params;
   const files = req.files as Express.Multer.File[];
   
-  console.log(`Uploading to client ${client}. Files count:`, files?.length);
-  
-  if (!files || files.length === 0) {
-    return res.status(400).json({ error: "Nenhuma foto enviada" });
-  }
-
-  const clientDir = path.join(VERCEL_UPLOADS, client);
-  if (!fs.existsSync(clientDir)) {
-    fs.mkdirSync(clientDir, { recursive: true });
-  }
-
-  const existingFiles = fs.readdirSync(clientDir);
-  if (existingFiles.length + files.length > 30) {
-    return res.status(400).json({ error: "Limite de 30 fotos atingido" });
-  }
+  if (!files || files.length === 0) return res.status(400).json({ error: "Nenhuma foto enviada" });
 
   try {
     for (const file of files) {
       const ext = path.extname(file.originalname);
-      const filename = `${uuidv4()}${ext}`;
-      const filePath = path.join(clientDir, filename);
-      fs.writeFileSync(filePath, file.buffer);
-      console.log(`Saved file: ${filename} to ${clientDir}`);
+      const filename = `${client}/${uuidv4()}${ext}`;
+      
+      const { error } = await supabase.storage
+        .from('photos')
+        .upload(filename, file.buffer, {
+          contentType: file.mimetype
+        });
+      
+      if (error) throw error;
     }
     res.json({ success: true });
-  } catch (err) {
-    console.error("Upload error:", err);
-    res.status(500).json({ error: "Erro ao salvar fotos" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
 // Delete Photo
-app.delete("/api/admin/photos/:client/:filename", authMiddleware, (req, res) => {
+app.delete("/api/admin/photos/:client/:filename", authMiddleware, async (req, res) => {
   const { client, filename } = req.params;
-  const filePath = path.join(VERCEL_UPLOADS, client, filename);
+  const { error } = await supabase.storage.from('photos').remove([`${client}/${filename}`]);
   
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-    res.json({ success: true });
-  } else {
-    res.status(404).json({ error: "File not found" });
-  }
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
 });
 
 // Public: Get Client Info & Photos
-app.get("/api/client/:id", (req, res) => {
+app.get("/api/client/:id", async (req, res) => {
   const id = String(req.params.id).trim();
-  const clients = getClients();
   
-  console.log(`[GET /api/client/${id}] Searching for client...`);
-  console.log(`[GET /api/client/${id}] Total clients in DB: ${clients.length}`);
-  console.log(`[GET /api/client/${id}] Available IDs:`, clients.map((c: any) => String(c.id).trim()));
+  const { data: client, error } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('id', id)
+    .single();
 
-  const client = clients.find((c: any) => String(c.id).trim().toLowerCase() === id.toLowerCase());
-
-  if (!client) {
-    console.warn(`[GET /api/client/${id}] Client NOT FOUND`);
-    return res.status(404).json({ 
-      error: "Portfólio não encontrado", 
-      debug: { requestedId: id, availableIds: clients.map((c: any) => c.id) } 
-    });
+  if (!client || error) {
+    return res.status(404).json({ error: "Portfólio não encontrado" });
   }
 
-  console.log(`[GET /api/client/${id}] Client found: ${client.name}`);
-  const clientDir = path.join(VERCEL_UPLOADS, client.id);
-  const photos = fs.existsSync(clientDir) 
-    ? fs.readdirSync(clientDir).map(filename => ({
-        url: `/api/photos/${id}/${filename}`,
-        name: filename
-      }))
-    : [];
+  const { data: files } = await supabase.storage.from('photos').list(id);
+  const photos = (files || []).map(f => ({
+    url: supabase.storage.from('photos').getPublicUrl(`${id}/${f.name}`).data.publicUrl,
+    name: f.name
+  }));
 
   res.json({ ...client, photos });
-});
-
-// Serve Photos Securely
-app.get("/api/photos/:client/:filename", (req, res) => {
-  const { client, filename } = req.params;
-  const filePath = path.join(VERCEL_UPLOADS, client, filename);
-
-  if (fs.existsSync(filePath)) {
-    res.setHeader("Content-Disposition", "inline");
-    res.sendFile(filePath);
-  } else {
-    res.status(404).send("Not found");
-  }
 });
 
 // Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("Global error:", err);
-  if (err instanceof multer.MulterError) {
-    if (err.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({ error: "Arquivo muito grande (máx 4.5MB)" });
-    }
-    return res.status(400).json({ error: `Erro no upload: ${err.message}` });
-  }
   res.status(500).json({ error: err.message || "Erro interno do servidor" });
 });
 

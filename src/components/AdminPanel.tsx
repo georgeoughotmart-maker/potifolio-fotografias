@@ -27,6 +27,8 @@ export default function AdminPanel() {
     fetchSettings();
   }, []);
 
+  const [supabaseStatus, setSupabaseStatus] = useState<'loading' | 'connected' | 'error'>('loading');
+
   const fetchSettings = async () => {
     const res = await fetch('/api/settings');
     if (res.ok) {
@@ -54,9 +56,23 @@ export default function AdminPanel() {
   };
 
   useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        setSupabaseStatus(data.supabaseConnected ? 'connected' : 'error');
+      } catch (e) {
+        setSupabaseStatus('error');
+      }
+    };
+    checkStatus();
+  }, []);
+
+  useEffect(() => {
     if (isLoggedIn) {
       localStorage.setItem('admin_pass', password);
       fetchClients();
+      fetchSettings();
     }
   }, [isLoggedIn]);
 
@@ -245,6 +261,12 @@ export default function AdminPanel() {
     <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col md:flex-row font-sans">
       {/* Sidebar */}
       <div className="w-full md:w-80 bg-[#0a0a0a] border-r border-white/5 p-8 flex flex-col relative z-20">
+        <div className="mb-6 flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${supabaseStatus === 'connected' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : supabaseStatus === 'loading' ? 'bg-zinc-500 animate-pulse' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'}`} />
+          <span className="text-[10px] uppercase tracking-widest font-bold text-zinc-500">
+            {supabaseStatus === 'connected' ? 'Supabase Online' : supabaseStatus === 'loading' ? 'Verificando...' : 'Supabase Offline'}
+          </span>
+        </div>
         <div className="flex items-center justify-between mb-12">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center shadow-lg shadow-red-600/20">
