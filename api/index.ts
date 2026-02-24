@@ -124,12 +124,12 @@ app.get("/api/health", async (req, res) => {
     status: "ok", 
     supabaseConnected,
     errorDetail,
-    version: "2.1.0",
+    version: "2.1.1",
     setupGuide: !supabaseConnected ? {
       step1: "Vá ao painel da Vercel > Settings > Environment Variables",
-      step2: "Adicione SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY",
-      step3: "Garanta que as caixas 'Production' e 'Preview' estejam marcadas",
-      step4: "Faça um NOVO DEPLOY (aba Deployments > Redeploy)"
+      step2: "Adicione URL_DO_SUPABASE (pegue o 'Project URL' no Supabase)",
+      step3: "Adicione CHAVE_DO_SUPABASE (pegue a 'service_role' key no Supabase)",
+      step4: "Clique em 'Redeploy' na aba Deployments da Vercel"
     } : null
   });
 });
@@ -347,6 +347,12 @@ app.get("/api/health", async (req, res) => {
       const supabase = getSupabase();
       if (!supabase) return res.status(503).json({ error: "Supabase não configurado" });
 
+      // Tenta garantir que o bucket existe antes de subir
+      const { data: buckets } = await supabase.storage.listBuckets();
+      if (!buckets?.find(b => b.name === 'photos')) {
+        await supabase.storage.createBucket('photos', { public: true });
+      }
+
       for (const file of files) {
         const ext = path.extname(file.originalname);
         const filename = `${client}/${uuidv4()}${ext}`;
@@ -354,14 +360,19 @@ app.get("/api/health", async (req, res) => {
         const { error } = await supabase.storage
           .from('photos')
           .upload(filename, file.buffer, {
-            contentType: file.mimetype
+            contentType: file.mimetype,
+            upsert: true
           });
         
-        if (error) throw error;
+        if (error) {
+          console.error("Erro no upload do arquivo:", error);
+          throw new Error(`Erro ao subir ${file.originalname}: ${error.message}`);
+        }
       }
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      console.error("Erro geral no upload:", err);
+      res.status(500).json({ error: err.message || "Erro desconhecido no upload" });
     }
   });
 
