@@ -56,56 +56,22 @@ app.get("/api/health", async (req, res) => {
   let errorDetail = null;
   
   try {
-    const allKeys = Object.keys(process.env);
-    const keyHints = allKeys.map(k => k.substring(0, 4) + (k.length > 4 ? '...' : '')).join(', ');
-    
-    // Agressive search: try to find any key that looks like what we need, regardless of case
-    const supabaseUrlKey = allKeys.find(k => k.toUpperCase() === 'SUPABASE_URL' || k.toUpperCase() === 'NEXT_PUBLIC_SUPABASE_URL');
-    const supabaseKeyKey = allKeys.find(k => k.toUpperCase() === 'SUPABASE_SERVICE_ROLE_KEY' || k.toUpperCase() === 'SUPABASE_ANON_KEY' || k.toUpperCase() === 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
-    
-    const url = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || (supabaseUrlKey ? process.env[supabaseUrlKey] : null) || "").trim();
-    const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || (supabaseKeyKey ? process.env[supabaseKeyKey] : null) || "").trim();
+    const url = (process.env.SUPABASE_URL || "").trim();
+    const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "").trim();
 
-    const foundKeys = allKeys.filter(k => 
-      k.toUpperCase().includes('SUPA') || k.toUpperCase().includes('PASS') || k === 'NODE_ENV' || k.toUpperCase().includes('TEST')
-    );
-
-    if (!url && !key) {
-      errorDetail = `ERRO CRÍTICO: Chaves Supabase não encontradas. Dicas: ${keyHints}. Suspeitas: ${foundKeys.join(', ') || 'Nenhuma'}`;
-    } else if (!url) {
-      errorDetail = `ERRO: SUPABASE_URL faltando. Suspeitas: ${foundKeys.join(', ')}`;
-    } else if (!key) {
-      errorDetail = `ERRO: Chave Supabase faltando. Suspeitas: ${foundKeys.join(', ')}`;
+    if (!url || !key) {
+      errorDetail = "Configuração faltando: SUPABASE_URL ou KEY não encontradas no ambiente.";
     } else {
-      const isServiceKey = !!(process.env.SUPABASE_SERVICE_ROLE_KEY || (supabaseKeyKey && supabaseKeyKey.toUpperCase() === 'SUPABASE_SERVICE_ROLE_KEY'));
       const supabase = getSupabase();
       if (supabase) {
-        // Check database
         const { error: dbError } = await supabase.from('clients').select('id').limit(1);
         if (dbError) {
-          errorDetail = `Erro na tabela: ${dbError.message}`;
-          if (dbError.code === '42P01') errorDetail = "Tabela 'clients' não encontrada. Execute o SQL de criação.";
+          errorDetail = `Erro no Banco: ${dbError.message}`;
         } else {
-          // Check storage
-          const { data: buckets, error: storageError } = await supabase.storage.listBuckets();
-          if (storageError) {
-            errorDetail = `Erro no Storage: ${storageError.message}`;
-          } else {
-            const photosBucket = buckets?.find(b => b.name === 'photos');
-            if (!photosBucket) {
-              errorDetail = "Bucket 'photos' não encontrado. Crie-o no Storage.";
-            } else if (!photosBucket.public) {
-              errorDetail = "O bucket 'photos' precisa ser PUBLIC.";
-            } else if (!isServiceKey) {
-              errorDetail = "Aviso: Usando chave 'anon'. Use 'service_role' para fotos.";
-              supabaseConnected = true;
-            } else {
-              supabaseConnected = true;
-            }
-          }
+          supabaseConnected = true;
         }
       } else {
-        errorDetail = "Falha ao inicializar Supabase (verifique as chaves)";
+        errorDetail = "Falha ao inicializar Supabase.";
       }
     }
   } catch (e: any) {
@@ -116,7 +82,7 @@ app.get("/api/health", async (req, res) => {
     status: "ok", 
     supabaseConnected,
     errorDetail,
-    version: "1.0.3-final-debug",
+    version: "2.0.0",
     timestamp: new Date().toISOString() 
   });
 });
