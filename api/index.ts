@@ -33,12 +33,24 @@ async function startServer() {
   let supabaseClient: any = null;
   const getSupabase = () => {
     try {
-      const url = (process.env.SUPABASE_URL || "").trim().replace(/^["']|["']$/g, '');
-      const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "").trim().replace(/^["']|["']$/g, '');
+      const allKeys = Object.keys(process.env);
+      const getVar = (name: string) => {
+        const aliases: Record<string, string[]> = {
+          'SUPABASE_URL': ['SUPABASE_URL', 'URL_DO_SUPABASE', 'URL_SUPABASE', 'NEXT_PUBLIC_SUPABASE_URL'],
+          'SUPABASE_SERVICE_ROLE_KEY': ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_KEY', 'CHAVE_DO_SUPABASE', 'CHAVE_SUPABASE', 'SUPABASE_ANON_KEY']
+        };
+        const variants = aliases[name] || [name];
+        for (const v of variants) {
+          if (process.env[v]) return process.env[v]?.trim();
+        }
+        const foundKey = allKeys.find(k => variants.some(v => v.toUpperCase() === k.toUpperCase()));
+        return foundKey ? process.env[foundKey]?.trim() : null;
+      };
+
+      const url = getVar('SUPABASE_URL');
+      const key = getVar('SUPABASE_SERVICE_ROLE_KEY');
       
-      if (!url || !key) {
-        return null;
-      }
+      if (!url || !key) return null;
 
       if (!supabaseClient) {
         supabaseClient = createClient(url, key);
@@ -58,27 +70,38 @@ app.get("/api/health", async (req, res) => {
   try {
     const allKeys = Object.keys(process.env);
     
-    // Procura por variaveis com ou sem prefixos comuns
+    // Procura por variaveis com ou sem prefixos comuns e apelidos em português
     const getVar = (name: string) => {
-      const variants = [name, `VITE_${name}`, `NEXT_PUBLIC_${name}`];
+      const aliases: Record<string, string[]> = {
+        'SUPABASE_URL': ['SUPABASE_URL', 'URL_DO_SUPABASE', 'URL_SUPABASE', 'NEXT_PUBLIC_SUPABASE_URL'],
+        'SUPABASE_SERVICE_ROLE_KEY': ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_KEY', 'CHAVE_DO_SUPABASE', 'CHAVE_SUPABASE', 'SUPABASE_ANON_KEY'],
+        'ADMIN_PASSWORD': ['ADMIN_PASSWORD', 'SENHA_DE_ADMINISTRADOR', 'SENHA_ADMIN', 'SENHA_ADMINISTRADOR']
+      };
+
+      const variants = aliases[name] || [name];
+      
+      // 1. Busca exata nos nomes conhecidos
       for (const v of variants) {
         if (process.env[v]) return process.env[v]?.trim();
       }
-      // Busca insensível a maiúsculas/minúsculas como último recurso
-      const foundKey = allKeys.find(k => k.toUpperCase() === name.toUpperCase());
+      
+      // 2. Busca insensível a maiúsculas/minúsculas em todo o process.env
+      const foundKey = allKeys.find(k => variants.some(v => v.toUpperCase() === k.toUpperCase()));
       return foundKey ? process.env[foundKey]?.trim() : null;
     };
 
     const url = getVar('SUPABASE_URL');
-    const key = getVar('SUPABASE_SERVICE_ROLE_KEY') || getVar('SUPABASE_ANON_KEY');
+    const key = getVar('SUPABASE_SERVICE_ROLE_KEY');
+    const adminPass = getVar('ADMIN_PASSWORD');
 
     if (!url || !key) {
       const missing = [];
-      if (!url) missing.push('SUPABASE_URL');
-      if (!key) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+      if (!url) missing.push('URL_DO_SUPABASE');
+      if (!key) missing.push('CHAVE_DO_SUPABASE');
       
       errorDetail = `Configuração incompleta. Faltando: ${missing.join(' e ')}. `;
-      errorDetail += `Chaves detectadas no sistema: ${allKeys.filter(k => !k.startsWith('AWS_') && !k.startsWith('VERCEL_')).join(', ') || 'Nenhuma personalizada'}.`;
+      if (adminPass) errorDetail += "Notei que você configurou a SENHA_DE_ADMINISTRADOR, mas ainda faltam os dados do Supabase. ";
+      errorDetail += `Chaves detectadas: ${allKeys.filter(k => !k.startsWith('AWS_') && !k.startsWith('VERCEL_')).join(', ')}.`;
     } else {
       const supabase = getSupabase();
       if (supabase) {
@@ -114,7 +137,7 @@ app.get("/api/health", async (req, res) => {
   // Admin Auth Middleware
   const getAdminPassword = () => {
     try {
-      const pass = (process.env.ADMIN_PASSWORD || "admin123").trim();
+      const pass = (process.env.ADMIN_PASSWORD || process.env.SENHA_DE_ADMINISTRADOR || "admin123").trim();
       return pass.replace(/^["']|["']$/g, '');
     } catch (e) {
       return "admin123";
