@@ -74,7 +74,7 @@ app.get("/api/health", async (req, res) => {
     const getVar = (name: string) => {
       const aliases: Record<string, string[]> = {
         'SUPABASE_URL': ['SUPABASE_URL', 'URL_DO_SUPABASE', 'URL_SUPABASE', 'NEXT_PUBLIC_SUPABASE_URL'],
-        'SUPABASE_SERVICE_ROLE_KEY': ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_KEY', 'CHAVE_DO_SUPABASE', 'CHAVE_SUPABASE', 'SUPABASE_ANON_KEY'],
+        'SUPABASE_SERVICE_ROLE_KEY': ['SUPABASE_SERVICE_ROLE_KEY', 'CHAVE_DO_SUPABASE', 'CHAVE_SUPABASE', 'SUPABASE_KEY', 'SUPABASE_ANON_KEY'],
         'ADMIN_PASSWORD': ['ADMIN_PASSWORD', 'SENHA_DE_ADMINISTRADOR', 'SENHA_ADMIN', 'SENHA_ADMINISTRADOR']
       };
 
@@ -366,7 +366,9 @@ app.get("/api/health", async (req, res) => {
         
         if (error) {
           console.error("Erro no upload do arquivo:", error);
-          throw new Error(`Erro ao subir ${file.originalname}: ${error.message}`);
+          const msg = error.message || "Erro desconhecido";
+          const hint = msg.includes("security policy") ? "Erro de Permissão (RLS). Use a chave 'service_role'." : "";
+          throw new Error(`Erro ao subir ${file.originalname}: ${msg} ${hint}`);
         }
       }
       res.json({ success: true });
