@@ -176,11 +176,20 @@ export default function AdminPanel() {
     const files = Array.from(e.target.files);
     let successCount = 0;
     let failCount = 0;
+    let lastError = '';
 
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      const file = files[i] as File;
+      
+      // Check file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        failCount++;
+        lastError = `Arquivo ${file.name} é muito grande (máx 5MB)`;
+        continue;
+      }
+
       const formData = new FormData();
-      formData.append('photos', file as File);
+      formData.append('photos', file);
 
       try {
         const res = await fetch(`/api/admin/upload/${selectedClient}`, {
@@ -192,23 +201,23 @@ export default function AdminPanel() {
         if (res.ok) {
           successCount++;
         } else {
-          const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+          const errorData = await res.json().catch(() => ({ error: 'Erro no servidor' }));
           console.error('Upload failed:', errorData);
           failCount++;
+          lastError = errorData.error || 'Erro desconhecido';
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Upload error:', error);
         failCount++;
+        lastError = error.message || 'Erro de conexão';
       }
       
-      // Small delay between uploads to be safe on serverless
-      if (i < files.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
+      // Small delay between uploads to prevent rate limiting/timeout
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     if (failCount > 0) {
-      alert(`Falha no envio!\n\nSucesso: ${successCount}\nFalha: ${failCount}\n\nMotivo provável: Verifique se o bucket 'photos' foi criado no Supabase e se a chave 'service_role' foi configurada nos Secrets.`);
+      alert(`Envio finalizado com alguns erros.\n\nSucesso: ${successCount}\nFalha: ${failCount}\n\nÚltimo erro: ${lastError}\n\nDica: Tente enviar as fotos que falharam novamente em grupos menores.`);
     } else if (successCount > 0) {
       alert('Todas as fotos foram enviadas com sucesso!');
     }
