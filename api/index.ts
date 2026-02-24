@@ -56,34 +56,58 @@ app.get("/api/health", async (req, res) => {
   let errorDetail = null;
   
   try {
-    const url = (process.env.SUPABASE_URL || "").trim();
-    const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "").trim();
+    const allKeys = Object.keys(process.env);
+    
+    // Procura por variaveis com ou sem prefixos comuns
+    const getVar = (name: string) => {
+      const variants = [name, `VITE_${name}`, `NEXT_PUBLIC_${name}`];
+      for (const v of variants) {
+        if (process.env[v]) return process.env[v]?.trim();
+      }
+      // Busca insensível a maiúsculas/minúsculas como último recurso
+      const foundKey = allKeys.find(k => k.toUpperCase() === name.toUpperCase());
+      return foundKey ? process.env[foundKey]?.trim() : null;
+    };
+
+    const url = getVar('SUPABASE_URL');
+    const key = getVar('SUPABASE_SERVICE_ROLE_KEY') || getVar('SUPABASE_ANON_KEY');
 
     if (!url || !key) {
-      errorDetail = "Configuração faltando: SUPABASE_URL ou KEY não encontradas no ambiente.";
+      const missing = [];
+      if (!url) missing.push('SUPABASE_URL');
+      if (!key) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+      
+      errorDetail = `Configuração incompleta. Faltando: ${missing.join(' e ')}. `;
+      errorDetail += `Chaves detectadas no sistema: ${allKeys.filter(k => !k.startsWith('AWS_') && !k.startsWith('VERCEL_')).join(', ') || 'Nenhuma personalizada'}.`;
     } else {
       const supabase = getSupabase();
       if (supabase) {
         const { error: dbError } = await supabase.from('clients').select('id').limit(1);
         if (dbError) {
-          errorDetail = `Erro no Banco: ${dbError.message}`;
+          errorDetail = `Erro de conexão com Supabase: ${dbError.message}`;
+          if (dbError.message.includes('database')) errorDetail += " (Verifique se a URL está correta)";
         } else {
           supabaseConnected = true;
         }
       } else {
-        errorDetail = "Falha ao inicializar Supabase.";
+        errorDetail = "Erro ao inicializar o cliente Supabase.";
       }
     }
   } catch (e: any) {
-    errorDetail = "Exceção: " + e.message;
+    errorDetail = "Erro interno no Health Check: " + e.message;
   }
   
   res.json({ 
     status: "ok", 
     supabaseConnected,
     errorDetail,
-    version: "2.0.0",
-    timestamp: new Date().toISOString() 
+    version: "2.1.0",
+    setupGuide: !supabaseConnected ? {
+      step1: "Vá ao painel da Vercel > Settings > Environment Variables",
+      step2: "Adicione SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY",
+      step3: "Garanta que as caixas 'Production' e 'Preview' estejam marcadas",
+      step4: "Faça um NOVO DEPLOY (aba Deployments > Redeploy)"
+    } : null
   });
 });
 
