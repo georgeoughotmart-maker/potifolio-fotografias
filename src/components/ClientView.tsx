@@ -74,35 +74,42 @@ export default function ClientView() {
       <h1 className="text-3xl font-display font-bold mb-4">Portfólio não encontrado</h1>
       <p className="text-zinc-500 mb-8 max-w-md">O link que você acessou pode estar incorreto ou o portfólio foi removido.</p>
       
-      {error?.debug && (
-        <div className="bg-zinc-900/50 p-6 rounded-2xl border border-white/5 text-left font-mono text-xs max-w-lg w-full">
-          <p className="text-red-500 mb-2 uppercase tracking-widest font-bold">Debug Info:</p>
-          <p className="text-zinc-400 mb-1">ID Solicitado: <span className="text-white">{error.debug.requestedId}</span></p>
-          <p className="text-zinc-400">IDs Disponíveis: <span className="text-white">{error.debug.availableIds.join(', ') || 'Nenhum'}</span></p>
+      {error && (
+        <div className="bg-zinc-900/50 p-6 rounded-2xl border border-white/5 text-left font-mono text-xs max-w-lg w-full mb-8">
+          <p className="text-red-500 mb-2 uppercase tracking-widest font-bold">Erro Detectado:</p>
+          <p className="text-zinc-400">{typeof error === 'string' ? error : (error.error || JSON.stringify(error))}</p>
+          {error.debug && (
+            <div className="mt-4 pt-4 border-t border-white/5">
+              <p className="text-zinc-400 mb-1">ID Solicitado: <span className="text-white">{error.debug.requestedId}</span></p>
+              <p className="text-zinc-400">IDs Disponíveis: <span className="text-white">{error.debug.availableIds.join(', ') || 'Nenhum'}</span></p>
+            </div>
+          )}
         </div>
       )}
       
       <button 
         onClick={() => window.location.href = '/admin'}
-        className="mt-10 px-8 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm transition-all"
+        className="px-8 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm transition-all"
       >
         Voltar para o Início
       </button>
     </div>
   );
 
+  const photos = client.photos || [];
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white p-4 md:p-12 no-select font-sans">
       <header className="mb-16 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           {logo ? (
-            <img src={logo} alt="Studio Logo" className="h-16 md:h-20 object-contain mb-6" />
+            <img src={logo} alt="Studio Logo" className="h-16 md:h-20 object-contain mb-6" referrerPolicy="no-referrer" />
           ) : (
             <h1 className="text-red-600 text-5xl font-bold font-display tracking-tighter mb-4">STUDIO</h1>
           )}
           <div className="h-px w-24 bg-red-600 mb-6" />
           <h2 className="text-zinc-500 uppercase tracking-[0.3em] text-xs font-bold">Portfólio Exclusivo</h2>
-          <p className="text-3xl md:text-5xl font-display font-light mt-2 tracking-tight">{client.name}</p>
+          <p className="text-3xl md:text-5xl font-display font-light mt-2 tracking-tight">{client.name || 'Cliente'}</p>
         </div>
         <div className="text-right hidden md:block">
           <p className="text-zinc-600 text-[10px] uppercase tracking-widest">Acesso Privado</p>
@@ -111,9 +118,9 @@ export default function ClientView() {
       </header>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-        {client.photos.map((photo, index) => (
+        {photos.map((photo, index) => (
           <motion.div
-            key={photo.name}
+            key={photo.name || index}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: index * 0.03 }}
@@ -126,12 +133,13 @@ export default function ClientView() {
               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
               loading="lazy"
               draggable={false}
+              referrerPolicy="no-referrer"
             />
             
             {/* Branding Overlay on Photo */}
             {logo && (
               <div className="absolute bottom-3 right-3 opacity-30 group-hover:opacity-60 transition-opacity pointer-events-none">
-                <img src={logo} alt="" className="h-6 object-contain grayscale brightness-200" />
+                <img src={logo} alt="" className="h-6 object-contain grayscale brightness-200" referrerPolicy="no-referrer" />
               </div>
             )}
 
@@ -150,7 +158,7 @@ export default function ClientView() {
         ))}
       </div>
 
-      {client.photos.length === 0 && (
+      {photos.length === 0 && (
         <div className="text-center py-20 text-zinc-500">
           Nenhuma foto disponível neste portfólio.
         </div>
@@ -166,7 +174,7 @@ export default function ClientView() {
             onClick={() => setSelectedPhoto(null)}
           >
             <button 
-              className="absolute top-6 right-6 text-white/70 hover:text-white transition-colors"
+              className="absolute top-6 right-6 text-white/70 hover:text-white transition-colors z-[60]"
               onClick={() => setSelectedPhoto(null)}
             >
               <X size={40} />
@@ -185,13 +193,14 @@ export default function ClientView() {
                 alt={selectedPhoto.name}
                 className="max-w-full max-h-[90vh] object-contain shadow-2xl relative z-10"
                 draggable={false}
+                referrerPolicy="no-referrer"
               />
               
               {/* Central Watermark Overlay */}
               {logo && (
                 <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none overflow-hidden">
                   <div className="opacity-[0.15] transform rotate-[-30deg] scale-150 flex flex-col items-center">
-                    <img src={logo} alt="" className="w-64 md:w-96 object-contain grayscale brightness-200" />
+                    <img src={logo} alt="" className="w-64 md:w-96 object-contain grayscale brightness-200" referrerPolicy="no-referrer" />
                     <p className="text-white text-4xl md:text-6xl font-bold tracking-[0.5em] mt-4 uppercase">PROPRIEDADE DO ESTÚDIO</p>
                   </div>
                 </div>
@@ -200,13 +209,13 @@ export default function ClientView() {
               {/* Corner Watermark (More visible) */}
               {logo && (
                 <div className="absolute bottom-6 right-6 z-30 opacity-40 pointer-events-none">
-                  <img src={logo} alt="" className="h-8 md:h-12 object-contain grayscale brightness-200" />
+                  <img src={logo} alt="" className="h-8 md:h-12 object-contain grayscale brightness-200" referrerPolicy="no-referrer" />
                 </div>
               )}
             </motion.div>
 
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white/5 backdrop-blur-xl px-8 py-3 rounded-full border border-white/10 text-white/80 font-mono text-sm tracking-widest">
-              FOTO #{String(client.photos.findIndex(p => p.name === selectedPhoto.name) + 1).padStart(2, '0')}
+            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white/5 backdrop-blur-xl px-8 py-3 rounded-full border border-white/10 text-white/80 font-mono text-sm tracking-widest z-40">
+              FOTO #{String(photos.findIndex(p => p.name === selectedPhoto.name) + 1).padStart(2, '0')}
             </div>
           </motion.div>
         )}
