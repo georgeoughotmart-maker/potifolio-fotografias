@@ -171,22 +171,39 @@ export default function ClientView() {
             >
               <X size={40} />
             </button>
-            <motion.img
+            <motion.div 
               initial={{ scale: 0.9 }}
               animate={{ scale: 1 }}
-              src={selectedPhoto.url}
-              alt={selectedPhoto.name}
-              className="max-w-full max-h-full object-contain shadow-2xl"
+              className="relative max-w-full max-h-full flex items-center justify-center"
               onClick={(e) => e.stopPropagation()}
-              draggable={false}
-            />
-            
-            {/* Modal Logo Watermark */}
-            {logo && (
-              <div className="absolute bottom-10 right-10 opacity-20 pointer-events-none hidden md:block">
-                <img src={logo} alt="" className="h-12 object-contain grayscale brightness-200" />
-              </div>
-            )}
+            >
+              {/* Invisible protection layer to prevent dragging/saving */}
+              <div className="absolute inset-0 z-20 cursor-default" onContextMenu={(e) => e.preventDefault()} />
+              
+              <img
+                src={selectedPhoto.url}
+                alt={selectedPhoto.name}
+                className="max-w-full max-h-[90vh] object-contain shadow-2xl relative z-10"
+                draggable={false}
+              />
+              
+              {/* Central Watermark Overlay */}
+              {logo && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none overflow-hidden">
+                  <div className="opacity-[0.15] transform rotate-[-30deg] scale-150 flex flex-col items-center">
+                    <img src={logo} alt="" className="w-64 md:w-96 object-contain grayscale brightness-200" />
+                    <p className="text-white text-4xl md:text-6xl font-bold tracking-[0.5em] mt-4 uppercase">PROPRIEDADE DO ESTÚDIO</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Corner Watermark (More visible) */}
+              {logo && (
+                <div className="absolute bottom-6 right-6 z-30 opacity-40 pointer-events-none">
+                  <img src={logo} alt="" className="h-8 md:h-12 object-contain grayscale brightness-200" />
+                </div>
+              )}
+            </motion.div>
 
             <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white/5 backdrop-blur-xl px-8 py-3 rounded-full border border-white/10 text-white/80 font-mono text-sm tracking-widest">
               FOTO #{String(client.photos.findIndex(p => p.name === selectedPhoto.name) + 1).padStart(2, '0')}
