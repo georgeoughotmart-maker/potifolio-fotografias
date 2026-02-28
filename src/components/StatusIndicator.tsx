@@ -18,15 +18,17 @@ export default function StatusIndicator() {
   const checkStatus = async () => {
     try {
       const res = await fetch('/api/health');
+      if (!res.ok) throw new Error('API Error');
       const data = await res.json();
       setStatus({
-        supabaseConnected: data.supabaseConnected,
-        errorDetail: data.errorDetail,
-        version: data.version,
+        supabaseConnected: !!data.supabaseConnected,
+        errorDetail: data.errorDetail || null,
+        version: data.version || '0.0.0',
         loading: false,
-        setupGuide: data.setupGuide
+        setupGuide: data.setupGuide || null
       });
     } catch (e) {
+      console.error('Status check failed:', e);
       setStatus(prev => ({ ...prev, loading: false, errorDetail: 'Erro ao conectar com a API' }));
     }
   };

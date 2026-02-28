@@ -454,22 +454,10 @@ app.get("/api/health", async (req, res) => {
       console.error("Vite failed to load:", e);
     }
   } else {
-    // Serve static files in production (including Vercel)
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    
-    // API routes are already handled above. 
-    // This handles the SPA routing fallback.
-    app.get("*", (req, res, next) => {
-      // If it's an API route that wasn't matched, don't serve index.html
-      if (req.url.startsWith('/api/')) {
-        return next();
-      }
-      res.sendFile(path.join(distPath, "index.html"), (err) => {
-        if (err) {
-          res.status(404).send("Site em construção ou erro no build. Verifique se 'npm run build' funcionou.");
-        }
-      });
+    // In production on Vercel, static files are handled by vercel.json rewrites.
+    // We only need to handle API routes here.
+    app.get("*", (req, res) => {
+      res.status(404).json({ error: "API route not found" });
     });
   }
 
