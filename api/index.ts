@@ -417,7 +417,12 @@ app.get("/api/health", async (req, res) => {
         return res.status(404).json({ error: "Portfólio não encontrado" });
       }
 
-      const { data: files } = await supabase.storage.from('photos').list(id);
+      const { data: files, error: storageError } = await supabase.storage.from('photos').list(id);
+      
+      if (storageError) {
+        console.error("Erro ao listar storage:", storageError);
+      }
+
       const photos = (files || []).map(f => ({
         url: supabase.storage.from('photos').getPublicUrl(`${id}/${f.name}`).data.publicUrl,
         name: f.name
