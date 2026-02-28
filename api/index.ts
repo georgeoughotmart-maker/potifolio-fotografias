@@ -75,7 +75,7 @@ app.get("/api/health", async (req, res) => {
       const aliases: Record<string, string[]> = {
         'SUPABASE_URL': ['SUPABASE_URL', 'URL_DO_SUPABASE', 'URL_SUPABASE', 'NEXT_PUBLIC_SUPABASE_URL'],
         'SUPABASE_SERVICE_ROLE_KEY': ['SUPABASE_SERVICE_ROLE_KEY', 'CHAVE_DO_SUPABASE', 'CHAVE_SUPABASE', 'SUPABASE_KEY', 'SUPABASE_ANON_KEY'],
-        'ADMIN_PASSWORD': ['ADMIN_PASSWORD', 'SENHA_DE_ADMINISTRADOR', 'SENHA_ADMIN', 'SENHA_ADMINISTRADOR']
+        'ADMIN_PASSWORD': ['ADMIN_PASSWORD', 'SENHA_DE_ADMINISTRADOR', 'SENHA_ADMIN', 'SENHA_ADMINISTRADOR', 'ENSAIO']
       };
 
       const variants = aliases[name] || [name];
@@ -137,7 +137,7 @@ app.get("/api/health", async (req, res) => {
   // Admin Auth Middleware
   const getAdminPassword = () => {
     try {
-      const pass = (process.env.ADMIN_PASSWORD || process.env.SENHA_DE_ADMINISTRADOR || "admin123").trim();
+      const pass = (process.env.ADMIN_PASSWORD || process.env.SENHA_DE_ADMINISTRADOR || process.env.ENSAIO || "admin123").trim();
       return pass.replace(/^["']|["']$/g, '');
     } catch (e) {
       return "admin123";
