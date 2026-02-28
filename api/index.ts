@@ -120,11 +120,16 @@ app.get("/api/health", async (req, res) => {
     errorDetail = "Erro interno no Health Check: " + e.message;
   }
   
+  const passSource = process.env.ADMIN_PASSWORD ? 'ADMIN_PASSWORD' : 
+                    process.env.SENHA_DE_ADMINISTRADOR ? 'SENHA_DE_ADMINISTRADOR' : 
+                    process.env.ENSAIO ? 'ENSAIO' : 'Padrão (admin123)';
+
   res.json({ 
     status: "ok", 
     supabaseConnected,
     errorDetail,
-    version: "2.1.1",
+    version: "2.1.2",
+    passwordSource: passSource,
     setupGuide: !supabaseConnected ? {
       step1: "Vá ao painel da Vercel > Settings > Environment Variables",
       step2: "Adicione URL_DO_SUPABASE (pegue o 'Project URL' no Supabase)",
