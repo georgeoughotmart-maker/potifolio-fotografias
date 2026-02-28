@@ -99,13 +99,12 @@ export default function AdminPanel() {
           const text = await res.text();
           try {
             const err = JSON.parse(text);
-            errorMessage = err.error || `Erro ${status}: Senha incorreta`;
+            errorMessage = `${err.error || 'Senha incorreta'}\n\n${err.hint || ''}`;
           } catch (e) {
-            // If not JSON, show the first 100 chars of the response
             errorMessage = `Erro ${status}: ${text.slice(0, 100)}...`;
           }
         } catch (e) {
-          errorMessage = `Erro ${status}: Não foi possível ler a resposta do servidor.`;
+          errorMessage = `Erro ${status}: Senha incorreta.`;
         }
         
         alert(errorMessage);

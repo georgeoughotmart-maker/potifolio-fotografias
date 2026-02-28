@@ -164,7 +164,14 @@ app.get("/api/health", async (req, res) => {
         res.json({ success: true });
       } else {
         console.log(">>> [AUTH] Failed: Password mismatch");
-        res.status(401).json({ error: "Senha incorreta" });
+        const passSource = process.env.ADMIN_PASSWORD ? 'ADMIN_PASSWORD' : 
+                          process.env.SENHA_DE_ADMINISTRADOR ? 'SENHA_DE_ADMINISTRADOR' : 
+                          process.env.ENSAIO ? 'ENSAIO' : 'Padrão (admin123)';
+        res.status(401).json({ 
+          error: "Senha incorreta", 
+          source: passSource,
+          hint: passSource !== 'Padrão (admin123)' ? `A senha atual é o valor da variável ${passSource} na Vercel.` : "A senha padrão é admin123"
+        });
       }
     } catch (err: any) {
       console.error(">>> [AUTH] Error:", err);
