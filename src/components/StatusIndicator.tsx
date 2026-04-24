@@ -4,12 +4,14 @@ export default function StatusIndicator() {
   const [status, setStatus] = useState<{
     supabaseConnected: boolean;
     errorDetail: string | null;
+    supabaseUrl: string | null;
     version: string;
     loading: boolean;
     setupGuide: any;
   }>({
     supabaseConnected: false,
     errorDetail: null,
+    supabaseUrl: null,
     version: '',
     loading: true,
     setupGuide: null
@@ -23,6 +25,7 @@ export default function StatusIndicator() {
       setStatus({
         supabaseConnected: !!data.supabaseConnected,
         errorDetail: data.errorDetail || null,
+        supabaseUrl: data.currentUrl || null,
         version: data.version || '0.0.0',
         loading: false,
         setupGuide: data.setupGuide || null
@@ -72,6 +75,11 @@ export default function StatusIndicator() {
               <p className="text-red-400 text-xs leading-relaxed">
                 {status.errorDetail}
               </p>
+              {status.supabaseUrl && (
+                <p className="mt-2 pt-2 border-t border-red-500/20 text-[9px] text-red-500/60 font-mono">
+                  URL Atual: {status.supabaseUrl}
+                </p>
+              )}
             </div>
 
             {status.setupGuide && (

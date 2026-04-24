@@ -29,35 +29,89 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Global environment variable helper
+  const allKeys = Object.keys(process.env);
+  const getVar = (name: string) => {
+    const aliases: Record<string, string[]> = {
+      'SUPABASE_URL': ['SUPABASE_URL', 'URL_DO_SUPABASE', 'URL_SUPABASE', 'NEXT_PUBLIC_SUPABASE_URL'],
+      'SUPABASE_SERVICE_ROLE_KEY': ['SUPABASE_SERVICE_ROLE_KEY', 'CHAVE_DO_SUPABASE', 'CHAVE_SUPABASE', 'SUPABASE_KEY', 'SUPABASE_ANON_KEY'],
+      'ADMIN_PASSWORD': ['ADMIN_PASSWORD', 'SENHA_DE_ADMINISTRADOR', 'SENHA_ADMIN', 'SENHA_ADMINISTRADOR', 'ENSAIO']
+    };
+
+    const variants = aliases[name] || [name];
+    let value: string | null = null;
+    
+    for (const v of variants) {
+      if (process.env[v]) {
+        value = process.env[v]!.trim();
+        break;
+      }
+    }
+    
+    if (!value) {
+      const foundKey = allKeys.find(k => variants.some(v => v.toUpperCase() === k.toUpperCase()));
+      if (foundKey) value = process.env[foundKey]!.trim();
+    }
+
+    if (value) {
+      // Remove quotes, whitespace, and invisible characters (including zero-width spaces and control characters)
+      value = value.replace(/^["']|["']$/g, '').trim().replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
+      
+      if (name === 'SUPABASE_URL') {
+        // Advanced cleanup for URLs
+        // 1. Remove common path suffixes
+        value = value.replace(/\/+$/, '')
+                     .split('/rest/v1')[0]
+                     .split('/auth/v1')[0]
+                     .split('/storage/v1')[0]
+                     .split('/api/v1')[0];
+        
+        // 2. If it still looks like a full URL, try to extract just the origin part
+        try {
+          if (value.includes('://')) {
+            const tempUrl = new URL(value);
+            value = tempUrl.origin;
+          }
+        } catch (e) {
+          // If URL parsing fails, continue with manual cleanup
+        }
+
+        // 3. Remove protocol for final standardization
+        value = value.replace(/^(https?:\/\/)+/i, '');
+        
+        // 4. Ensure proper protocol
+        if (value) {
+          value = `https://${value}`;
+        }
+        
+        console.log(`>>> [DEBUG] Sanitized ${name}: "${value}" (Length: ${value.length})`);
+      }
+    }
+    
+    return value;
+  };
+
   // Supabase Configuration (Lazy Initialization with extreme safety)
   let supabaseClient: any = null;
+  let lastUsedUrl: string | null = null;
+  let lastUsedKey: string | null = null;
+
   const getSupabase = () => {
     try {
-      const allKeys = Object.keys(process.env);
-      const getVar = (name: string) => {
-        const aliases: Record<string, string[]> = {
-          'SUPABASE_URL': ['SUPABASE_URL', 'URL_DO_SUPABASE', 'URL_SUPABASE', 'NEXT_PUBLIC_SUPABASE_URL'],
-          'SUPABASE_SERVICE_ROLE_KEY': ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_KEY', 'CHAVE_DO_SUPABASE', 'CHAVE_SUPABASE', 'SUPABASE_ANON_KEY']
-        };
-        const variants = aliases[name] || [name];
-        for (const v of variants) {
-          if (process.env[v]) return process.env[v]?.trim();
-        }
-        const foundKey = allKeys.find(k => variants.some(v => v.toUpperCase() === k.toUpperCase()));
-        return foundKey ? process.env[foundKey]?.trim() : null;
-      };
-
       const url = getVar('SUPABASE_URL');
       const key = getVar('SUPABASE_SERVICE_ROLE_KEY');
       
       if (!url || !key) return null;
 
-      if (!supabaseClient) {
+      // Re-initialize if environment variables changed (rare but possible in some environments)
+      if (!supabaseClient || url !== lastUsedUrl || key !== lastUsedKey) {
         supabaseClient = createClient(url, key);
+        lastUsedUrl = url;
+        lastUsedKey = key;
       }
       return supabaseClient;
     } catch (e) {
-      console.error(">>> [SUPABASE ERROR]", e);
+      console.error(">>> [SUPABASE INITIALIZATION ERROR]", e);
       return null;
     }
   };
@@ -66,58 +120,55 @@ async function startServer() {
 app.get("/api/health", async (req, res) => {
   let supabaseConnected = false;
   let errorDetail = null;
+  let supabaseUrl = null;
   
   try {
-    const allKeys = Object.keys(process.env);
-    
-    // Procura por variaveis com ou sem prefixos comuns e apelidos em português
-    const getVar = (name: string) => {
-      const aliases: Record<string, string[]> = {
-        'SUPABASE_URL': ['SUPABASE_URL', 'URL_DO_SUPABASE', 'URL_SUPABASE', 'NEXT_PUBLIC_SUPABASE_URL'],
-        'SUPABASE_SERVICE_ROLE_KEY': ['SUPABASE_SERVICE_ROLE_KEY', 'CHAVE_DO_SUPABASE', 'CHAVE_SUPABASE', 'SUPABASE_KEY', 'SUPABASE_ANON_KEY'],
-        'ADMIN_PASSWORD': ['ADMIN_PASSWORD', 'SENHA_DE_ADMINISTRADOR', 'SENHA_ADMIN', 'SENHA_ADMINISTRADOR', 'ENSAIO']
-      };
-
-      const variants = aliases[name] || [name];
-      
-      // 1. Busca exata nos nomes conhecidos
-      for (const v of variants) {
-        if (process.env[v]) return process.env[v]?.trim();
-      }
-      
-      // 2. Busca insensível a maiúsculas/minúsculas em todo o process.env
-      const foundKey = allKeys.find(k => variants.some(v => v.toUpperCase() === k.toUpperCase()));
-      return foundKey ? process.env[foundKey]?.trim() : null;
-    };
-
-    const url = getVar('SUPABASE_URL');
+    supabaseUrl = getVar('SUPABASE_URL');
     const key = getVar('SUPABASE_SERVICE_ROLE_KEY');
-    const adminPass = getVar('ADMIN_PASSWORD');
 
-    if (!url || !key) {
+    if (!supabaseUrl || !key) {
       const missing = [];
-      if (!url) missing.push('URL_DO_SUPABASE');
+      if (!supabaseUrl) missing.push('URL_DO_SUPABASE');
       if (!key) missing.push('CHAVE_DO_SUPABASE');
       
       errorDetail = `Configuração incompleta. Faltando: ${missing.join(' e ')}. `;
-      if (adminPass) errorDetail += "Notei que você configurou a SENHA_DE_ADMINISTRADOR, mas ainda faltam os dados do Supabase. ";
-      errorDetail += `Chaves detectadas: ${allKeys.filter(k => !k.startsWith('AWS_') && !k.startsWith('VERCEL_')).join(', ')}.`;
+      errorDetail += `Verifique se as chaves foram adicionadas corretamente no painel de Secrets ou na Vercel.`;
     } else {
       const supabase = getSupabase();
       if (supabase) {
-        const { error: dbError } = await supabase.from('clients').select('id').limit(1);
-        if (dbError) {
-          errorDetail = `Erro de conexão com Supabase: ${dbError.message}`;
-          if (dbError.message.includes('database')) errorDetail += " (Verifique se a URL está correta)";
-        } else {
-          supabaseConnected = true;
+        try {
+          const { error: dbError } = await supabase.from('clients').select('id').limit(1);
+          if (dbError) {
+            errorDetail = `Erro retornado pelo Supabase: ${dbError.message}`;
+            if (dbError.message.includes('getaddrinfo ENOTFOUND')) {
+              errorDetail = `ERRO DE DNS: O endereço "${supabaseUrl}" não foi encontrado. Verifique se a URL do projeto Supabase está correta.`;
+            }
+          } else {
+            supabaseConnected = true;
+          }
+        } catch (fetchErr: any) {
+          console.error(">>> [HEALTH CHECK FETCH ERROR]", fetchErr);
+          const msg = fetchErr.message || String(fetchErr);
+          const cause = fetchErr.cause ? String(fetchErr.cause) : "";
+          
+          if (msg.includes('ENOTFOUND') || cause.includes('ENOTFOUND')) {
+            errorDetail = `URL NÃO ENCONTRADA (DNS): O endereço "${supabaseUrl}" não existe. Verifique se copiou corretamente do painel do Supabase (Project Settings > API > Project URL).`;
+          } else if (msg.includes('fetch failed')) {
+            errorDetail = `FALHA DE CONEXÃO: O servidor não conseguiu alcançar o Supabase ("${supabaseUrl}"). `;
+            if (supabaseUrl.includes('supabase.co')) {
+              errorDetail += "DICA: Verifique se o projeto não está PAUSADO no Dashboard do Supabase.";
+            }
+            if (cause) errorDetail += ` (Causa: ${cause})`;
+          } else {
+            errorDetail = "Erro de rede ao acessar Supabase: " + msg;
+          }
         }
       } else {
-        errorDetail = "Erro ao inicializar o cliente Supabase.";
+        errorDetail = "Erro técnico ao carregar o cliente do banco de dados.";
       }
     }
   } catch (e: any) {
-    errorDetail = "Erro interno no Health Check: " + e.message;
+    errorDetail = "Erro interno crítico no servidor: " + e.message;
   }
   
   const passSource = process.env.ADMIN_PASSWORD ? 'ADMIN_PASSWORD' : 
@@ -128,25 +179,21 @@ app.get("/api/health", async (req, res) => {
     status: "ok", 
     supabaseConnected,
     errorDetail,
-    version: "2.1.2",
+    version: "2.1.3",
     passwordSource: passSource,
+    currentUrl: supabaseUrl ? (supabaseUrl.substring(0, 15) + '...') : null,
     setupGuide: !supabaseConnected ? {
-      step1: "Vá ao painel da Vercel > Settings > Environment Variables",
-      step2: "Adicione URL_DO_SUPABASE (pegue o 'Project URL' no Supabase)",
-      step3: "Adicione CHAVE_DO_SUPABASE (pegue a 'service_role' key no Supabase)",
-      step4: "Clique em 'Redeploy' na aba Deployments da Vercel"
+      step1: "Acesse o Dashboard do Supabase > Project Settings > API",
+      step2: "Copie o URL (Project URL) e insira na variável URL_DO_SUPABASE na Vercel",
+      step3: "Copie a 'service_role' key e insira na variável CHAVE_DO_SUPABASE na Vercel",
+      step4: "Faça o REDEPLOY na Vercel para as novas variáveis entrarem em vigor"
     } : null
   });
 });
 
   // Admin Auth Middleware
   const getAdminPassword = () => {
-    try {
-      const pass = (process.env.ADMIN_PASSWORD || process.env.SENHA_DE_ADMINISTRADOR || process.env.ENSAIO || "admin123").trim();
-      return pass.replace(/^["']|["']$/g, '');
-    } catch (e) {
-      return "admin123";
-    }
+    return getVar('ADMIN_PASSWORD') || "admin123";
   };
 
   app.post("/api/admin/verify", (req, res) => {
@@ -155,6 +202,12 @@ app.get("/api/health", async (req, res) => {
       const { password } = req.body;
       const currentPassword = getAdminPassword();
       
+      console.log(">>> [AUTH] Check:", { 
+        providedLength: password ? String(password).length : 0, 
+        expectedLength: currentPassword ? String(currentPassword).length : 0,
+        match: String(password) === String(currentPassword)
+      });
+
       if (!password) {
         return res.status(400).json({ error: "Senha é obrigatória" });
       }
@@ -199,11 +252,14 @@ app.get("/api/health", async (req, res) => {
         .select('*')
         .order('createdAt', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching clients:", error);
+        throw new Error(`Falha ao buscar clientes: ${error.message} (${error.code || 'sem código'})`);
+      }
       return data || [];
-    } catch (e) {
-      console.error("Error fetching clients:", e);
-      return [];
+    } catch (e: any) {
+      console.error("Critical error in getClients:", e);
+      throw e; // Relançar para que a rota capture
     }
   };
 
@@ -211,7 +267,7 @@ app.get("/api/health", async (req, res) => {
   const getSettings = async () => {
     try {
       const supabase = getSupabase();
-      if (!supabase) return { logo: null };
+      if (!supabase) throw new Error("Supabase não inicializado");
 
       const { data, error } = await supabase
         .from('settings')
@@ -219,11 +275,14 @@ app.get("/api/health", async (req, res) => {
         .eq('key', 'branding')
         .single();
       
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error && error.code !== 'PGRST116') {
+        console.error("Error fetching settings from DB:", error);
+        throw new Error(`Falha ao buscar configurações: ${error.message}`);
+      }
       return data?.value || { logo: null };
-    } catch (e) {
-      console.error("Error fetching settings:", e);
-      return { logo: null };
+    } catch (e: any) {
+      console.error("Critical error in getSettings:", e);
+      throw e;
     }
   };
 
@@ -260,8 +319,14 @@ app.get("/api/health", async (req, res) => {
   });
   // Branding Routes
   app.get("/api/settings", async (req, res) => {
-    const settings = await getSettings();
-    res.json(settings);
+    try {
+      const settings = await getSettings();
+      res.json(settings);
+    } catch (err: any) {
+      console.error("Settings route error:", err);
+      // Return default branding if DB fails but server is up
+      res.json({ logo: null });
+    }
   });
 
   app.post("/api/admin/settings/logo", authMiddleware, upload.single("logo"), async (req, res) => {
@@ -321,8 +386,13 @@ app.get("/api/health", async (req, res) => {
 
   // Get Clients
   app.get("/api/admin/clients", authMiddleware, async (req, res) => {
-    const clients = await getClients();
-    res.json(clients);
+    try {
+      const clients = await getClients();
+      res.json(clients);
+    } catch (err: any) {
+      console.error("Admin clients route error:", err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Delete Client
