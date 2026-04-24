@@ -30,7 +30,6 @@ async function startServer() {
   app.use(express.json());
 
   // Global environment variable helper
-  const allKeys = Object.keys(process.env);
   const getVar = (name: string) => {
     const aliases: Record<string, string[]> = {
       'SUPABASE_URL': ['SUPABASE_URL', 'URL_DO_SUPABASE', 'URL_SUPABASE', 'NEXT_PUBLIC_SUPABASE_URL'],
@@ -38,58 +37,71 @@ async function startServer() {
       'ADMIN_PASSWORD': ['ADMIN_PASSWORD', 'SENHA_DE_ADMINISTRADOR', 'SENHA_ADMIN', 'SENHA_ADMINISTRADOR', 'ENSAIO']
     };
 
-    const variants = aliases[name] || [name];
+    const variants = (aliases[name] || [name]);
+    const allKeys = Object.keys(process.env);
     let value: string | null = null;
+    let foundSource: string | null = null;
     
+    // 1. Precise match
     for (const v of variants) {
       if (process.env[v]) {
         value = process.env[v]!.trim();
+        foundSource = v;
         break;
       }
     }
     
+    // 2. Case-insensitive search
     if (!value) {
       const foundKey = allKeys.find(k => variants.some(v => v.toUpperCase() === k.toUpperCase()));
-      if (foundKey) value = process.env[foundKey]!.trim();
+      if (foundKey) {
+        value = process.env[foundKey]!.trim();
+        foundSource = foundKey;
+      }
     }
 
     if (value) {
-      // Remove quotes, whitespace, and invisible characters (including zero-width spaces and control characters)
-      value = value.replace(/^["']|["']$/g, '').trim().replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
+      // Remove quotes, all types of whitespace, and invisible characters
+      value = value.replace(/^["']|["']$/g, '').replace(/\s+/g, '').replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
       
       if (name === 'SUPABASE_URL') {
-        // Advanced cleanup for URLs
-        // 1. Remove common path suffixes
+        // 1. Fix only Project ID paste (20 chars hex/alphanumeric)
+        if (value.length === 20 && /^[a-z0-9]+$/i.test(value)) {
+          value = `https://${value.toLowerCase()}.supabase.co`;
+        }
+
+        // 2. Remove common path suffixes
         value = value.replace(/\/+$/, '')
                      .split('/rest/v1')[0]
                      .split('/auth/v1')[0]
                      .split('/storage/v1')[0]
                      .split('/api/v1')[0];
         
-        // 2. If it still looks like a full URL, try to extract just the origin part
-        try {
-          if (value.includes('://')) {
-            const tempUrl = new URL(value);
-            value = tempUrl.origin;
-          }
-        } catch (e) {
-          // If URL parsing fails, continue with manual cleanup
-        }
-
-        // 3. Remove protocol for final standardization
-        value = value.replace(/^(https?:\/\/)+/i, '');
-        
-        // 4. Ensure proper protocol
-        if (value) {
+        // 3. Detect hostname without protocol
+        if (value.includes('supabase.co') && !value.includes('://')) {
           value = `https://${value}`;
         }
         
-        console.log(`>>> [DEBUG] Sanitized ${name}: "${value}" (Length: ${value.length})`);
+        // 4. Final normalization using URL object if possible
+        try {
+          const urlToParse = value.includes('://') ? value : `https://${value}`;
+          const urlObj = new URL(urlToParse);
+          value = urlObj.origin;
+        } catch (e) {
+          // Fallback manual cleanup
+          value = value.replace(/^(https?:\/\/)+/i, '');
+          if (value) value = `https://${value}`;
+        }
+        
+        console.log(`>>> [DEBUG] Final Sanitized ${name}: "${value}"`);
       }
     }
     
-    return value;
+    return { value, source: foundSource };
   };
+
+  const getVarValue = (name: string) => getVar(name).value;
+  const getVarSource = (name: string) => getVar(name).source;
 
   // Supabase Configuration (Lazy Initialization with extreme safety)
   let supabaseClient: any = null;
@@ -98,8 +110,8 @@ async function startServer() {
 
   const getSupabase = () => {
     try {
-      const url = getVar('SUPABASE_URL');
-      const key = getVar('SUPABASE_SERVICE_ROLE_KEY');
+      const url = getVarValue('SUPABASE_URL');
+      const key = getVarValue('SUPABASE_SERVICE_ROLE_KEY');
       
       if (!url || !key) return null;
 
@@ -123,8 +135,8 @@ app.get("/api/health", async (req, res) => {
   let supabaseUrl = null;
   
   try {
-    supabaseUrl = getVar('SUPABASE_URL');
-    const key = getVar('SUPABASE_SERVICE_ROLE_KEY');
+    supabaseUrl = getVarValue('SUPABASE_URL');
+    const key = getVarValue('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !key) {
       const missing = [];
@@ -171,29 +183,27 @@ app.get("/api/health", async (req, res) => {
     errorDetail = "Erro interno crítico no servidor: " + e.message;
   }
   
-  const passSource = process.env.ADMIN_PASSWORD ? 'ADMIN_PASSWORD' : 
-                    process.env.SENHA_DE_ADMINISTRADOR ? 'SENHA_DE_ADMINISTRADOR' : 
-                    process.env.ENSAIO ? 'ENSAIO' : 'Padrão (admin123)';
+  const passSource = getVarSource('ADMIN_PASSWORD') || 'Padrão (admin123)';
 
   res.json({ 
     status: "ok", 
     supabaseConnected,
     errorDetail,
-    version: "2.1.3",
+    version: "2.1.7",
     passwordSource: passSource,
-    currentUrl: supabaseUrl ? (supabaseUrl.substring(0, 15) + '...') : null,
+    currentUrl: supabaseUrl || "Não configurado",
     setupGuide: !supabaseConnected ? {
-      step1: "Acesse o Dashboard do Supabase > Project Settings > API",
-      step2: "Copie o URL (Project URL) e insira na variável URL_DO_SUPABASE na Vercel",
-      step3: "Copie a 'service_role' key e insira na variável CHAVE_DO_SUPABASE na Vercel",
-      step4: "Faça o REDEPLOY na Vercel para as novas variáveis entrarem em vigor"
+      step1: "Se despausou agora, o DNS pode levar 5-10 min para voltar.",
+      step2: "Confirme se a URL no Supabase (Settings > API) é idêntica à da Vercel.",
+      step3: "Verifique se você copiou a 'service_role' key, não a 'anon' key.",
+      step4: "Clique em 'Redeploy' na Vercel para limpar caches de conexão.",
     } : null
   });
 });
 
   // Admin Auth Middleware
   const getAdminPassword = () => {
-    return getVar('ADMIN_PASSWORD') || "admin123";
+    return getVarValue('ADMIN_PASSWORD') || "admin123";
   };
 
   app.post("/api/admin/verify", (req, res) => {
@@ -201,11 +211,13 @@ app.get("/api/health", async (req, res) => {
     try {
       const { password } = req.body;
       const currentPassword = getAdminPassword();
+      const passSource = getVarSource('ADMIN_PASSWORD') || 'Padrão (admin123)';
       
       console.log(">>> [AUTH] Check:", { 
         providedLength: password ? String(password).length : 0, 
         expectedLength: currentPassword ? String(currentPassword).length : 0,
-        match: String(password) === String(currentPassword)
+        match: String(password) === String(currentPassword),
+        source: passSource
       });
 
       if (!password) {
@@ -217,9 +229,6 @@ app.get("/api/health", async (req, res) => {
         res.json({ success: true });
       } else {
         console.log(">>> [AUTH] Failed: Password mismatch");
-        const passSource = process.env.ADMIN_PASSWORD ? 'ADMIN_PASSWORD' : 
-                          process.env.SENHA_DE_ADMINISTRADOR ? 'SENHA_DE_ADMINISTRADOR' : 
-                          process.env.ENSAIO ? 'ENSAIO' : 'Padrão (admin123)';
         res.status(401).json({ 
           error: "Senha incorreta", 
           source: passSource,
