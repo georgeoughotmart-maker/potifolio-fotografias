@@ -552,8 +552,14 @@ app.get("/api/health", async (req, res) => {
     }
   } else if (process.env.VERCEL) {
     // In production on Vercel, static files are handled by vercel.json rewrites.
-    // We only need to handle API routes here.
+    // However, if a request reaches the API handler and is not matched by an earlier route,
+    // we should serve the index.html to support SPA routing (Vite build output).
+    const distPath = path.join(process.cwd(), 'dist');
     app.get("*", (req, res) => {
+      // If it's a browser request for a page (not an API call starting with /api), serve index.html
+      if (!req.url.startsWith('/api')) {
+        return res.sendFile(path.join(distPath, 'index.html'));
+      }
       res.status(404).json({ error: "API route not found" });
     });
   } else {
