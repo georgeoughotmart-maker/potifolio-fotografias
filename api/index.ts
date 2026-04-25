@@ -488,6 +488,7 @@ app.get("/api/health", async (req, res) => {
   // Public: Get Client Info & Photos
   app.get("/api/client/:id", async (req, res) => {
     const id = String(req.params.id).trim();
+    console.log(`>>> [PORTFOLIO] Request for ID: "${id}"`);
     
     try {
       const supabase = getSupabase();
@@ -500,22 +501,39 @@ app.get("/api/health", async (req, res) => {
         .single();
 
       if (!client || error) {
-        return res.status(404).json({ error: "Portfólio não encontrado" });
+        console.warn(`>>> [PORTFOLIO] Client not found: "${id}". Error:`, error);
+        // Fetch list of available IDs for debugging
+        const { data: allClients } = await supabase.from('clients').select('id');
+        const availableIds = (allClients || []).map(c => c.id);
+        
+        return res.status(404).json({ 
+          error: "Portfólio não encontrado",
+          debug: {
+            requestedId: id,
+            availableIds: availableIds,
+            supabaseError: error?.message || null
+          }
+        });
       }
 
+      console.log(`>>> [PORTFOLIO] Found client: ${client.name}. Listing files...`);
       const { data: files, error: storageError } = await supabase.storage.from('photos').list(id);
       
       if (storageError) {
-        console.error("Erro ao listar storage:", storageError);
+        console.error(">>> [PORTFOLIO] Error listing storage:", storageError);
       }
 
-      const photos = (files || []).map(f => ({
-        url: supabase.storage.from('photos').getPublicUrl(`${id}/${f.name}`).data.publicUrl,
-        name: f.name
-      }));
+      const photos = (files || [])
+        .filter(f => f.name !== '.emptyFolderPlaceholder')
+        .map(f => ({
+          url: supabase.storage.from('photos').getPublicUrl(`${id}/${f.name}`).data.publicUrl,
+          name: f.name
+        }));
 
+      console.log(`>>> [PORTFOLIO] Success. Photos found: ${photos.length}`);
       res.json({ ...client, photos });
     } catch (err: any) {
+      console.error(">>> [PORTFOLIO] Critical error:", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -532,11 +550,18 @@ app.get("/api/health", async (req, res) => {
     } catch (e) {
       console.error("Vite failed to load:", e);
     }
-  } else {
+  } else if (process.env.VERCEL) {
     // In production on Vercel, static files are handled by vercel.json rewrites.
     // We only need to handle API routes here.
     app.get("*", (req, res) => {
       res.status(404).json({ error: "API route not found" });
+    });
+  } else {
+    // Standard production mode (e.g. AI Studio Share or local build)
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
