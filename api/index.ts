@@ -1,4 +1,5 @@
 import express from "express";
+import fs from "fs";
 import path from "path";
 import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
@@ -189,7 +190,7 @@ app.get("/api/health", async (req, res) => {
     status: "ok", 
     supabaseConnected,
     errorDetail,
-    version: "2.1.7",
+    version: "2.1.9",
     passwordSource: passSource,
     currentUrl: supabaseUrl || "Não configurado",
     setupGuide: !supabaseConnected ? {
@@ -538,6 +539,11 @@ app.get("/api/health", async (req, res) => {
     }
   });
 
+  const distPath = path.join(process.cwd(), 'dist');
+  
+  // Serve static files from 'dist' if they exist
+  app.use(express.static(distPath));
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     try {
@@ -550,24 +556,21 @@ app.get("/api/health", async (req, res) => {
     } catch (e) {
       console.error("Vite failed to load:", e);
     }
-  } else if (process.env.VERCEL) {
-    // In production on Vercel, static files are handled by vercel.json rewrites.
-    // However, if a request reaches the API handler and is not matched by an earlier route,
-    // we should serve the index.html to support SPA routing (Vite build output).
-    const distPath = path.join(process.cwd(), 'dist');
-    app.get("*", (req, res) => {
-      // If it's a browser request for a page (not an API call starting with /api), serve index.html
-      if (!req.url.startsWith('/api')) {
-        return res.sendFile(path.join(distPath, 'index.html'));
-      }
-      res.status(404).json({ error: "API route not found" });
-    });
   } else {
-    // Standard production mode (e.g. AI Studio Share or local build)
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    // Production / Vercel fallback
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const p = path.join(distPath, 'index.html');
+      if (fs.existsSync(p)) {
+        res.sendFile(p);
+      } else {
+        // Fallback for when 'dist' folder is missing or index.html is in root
+        const rootP = path.join(process.cwd(), 'index.html');
+        if (fs.existsSync(rootP)) {
+          res.sendFile(rootP);
+        } else {
+          res.status(404).send("Error: index.html not found in dist or root. Check build output.");
+        }
+      }
     });
   }
 
