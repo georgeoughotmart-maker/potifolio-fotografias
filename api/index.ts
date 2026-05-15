@@ -24,11 +24,28 @@ async function startServer() {
 
   // Middleware de log para depuração
   app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      console.log(`${new Date().toISOString()} - ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+    });
     next();
   });
 
   app.use(express.json());
+
+  // Check Internet Helper
+  const checkInternet = async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      await fetch('https://www.google.com', { signal: controller.signal });
+      clearTimeout(timeoutId);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
 
   // Global environment variable helper
   const getVar = (name: string) => {
@@ -147,10 +164,13 @@ app.get("/api/health", async (req, res) => {
   let supabaseConnected = false;
   let errorDetail = null;
   let supabaseUrl = null;
+  let internetStatus = true;
   
   try {
     supabaseUrl = getVarValue('SUPABASE_URL');
     const key = getVarValue('SUPABASE_SERVICE_ROLE_KEY');
+
+    internetStatus = await checkInternet();
 
     if (!supabaseUrl || !key) {
       const missing = [];
@@ -180,13 +200,17 @@ app.get("/api/health", async (req, res) => {
           if (msg.includes('ENOTFOUND') || cause.includes('ENOTFOUND')) {
             errorDetail = `URL NÃO ENCONTRADA (DNS): O endereço "${supabaseUrl}" não existe no sistema da Supabase. `;
             errorDetail += `Verifique se o ID "${supabaseUrl?.split('//')[1]?.split('.')[0]}" está correto. `;
-            errorDetail += `Isso acontece se o projeto foi deletado, pausado ou se houve erro de digitação.`;
+            errorDetail += `Isso acontece se o projeto foi deletado, pausado recentemente ou se houve erro de digitação.`;
           } else if (msg.includes('fetch failed')) {
             errorDetail = `FALHA DE CONEXÃO: O servidor não conseguiu alcançar o Supabase ("${supabaseUrl}"). `;
             if (supabaseUrl.includes('supabase.co')) {
               errorDetail += "DICA: Verifique se o projeto não está PAUSADO no Dashboard do Supabase.";
             }
             if (cause) errorDetail += ` (Causa: ${cause})`;
+            
+            if (!internetStatus) {
+              errorDetail = "O servidor está sem conexão com a internet externa. Isso pode ser uma instabilidade temporária do ambiente.";
+            }
           } else {
             errorDetail = "Erro de rede ao acessar Supabase: " + msg;
           }
@@ -205,7 +229,8 @@ app.get("/api/health", async (req, res) => {
     status: "ok", 
     supabaseConnected,
     errorDetail,
-    version: "2.4.2",
+    version: "2.4.5",
+    internetStatus,
     passwordSource: passSource,
     currentUrl: supabaseUrl || "Não configurado",
     diagnostic: {
@@ -214,12 +239,12 @@ app.get("/api/health", async (req, res) => {
       envSource: getVarSource('SUPABASE_URL')
     },
     setupGuide: !supabaseConnected ? {
-      dns_error: errorDetail?.includes('ENOTFOUND') ? "A URL não foi encontrada no DNS. Verifique se o ID do projeto no Supabase está correto." : null,
-      paused_error: errorDetail?.includes('fetch failed') ? "O projeto pode estar pausado ou o Supabase com instabilidade." : null,
-      step1: "Se despausou agora, o DNS pode levar até 15 min para propagar.",
-      step2: "Confirme se o ID do projeto exibido no diagnóstico acima é o correto.",
-      step3: "Verifique se você copiou a 'service_role' key (chave longa), não a 'anon'.",
-      step4: "Clique em 'Redeploy' na Vercel para forçar o reinício da conexão.",
+      dns_error: errorDetail?.includes('ENOTFOUND') ? "A URL não foi encontrada no DNS. Verifique se o ID do projeto no Supabase está correto. Se você acabou de despausar, aguarde 5-10 minutos." : null,
+      paused_error: errorDetail?.includes('fetch failed') ? "O servidor não consegue falar com o Supabase. Quase sempre é porque o projeto está PAUSADO." : null,
+      step1: "Acesse o painel do Supabase e verifique se o projeto está Ativo (Active).",
+      step2: "Vá em Settings > API e confirme se a Project URL é exatamente a que você configurou.",
+      step3: "Se o ID do projeto mudou, você precisa atualizar a variável de ambiente.",
+      step4: "Clique em 'Redeploy' na Vercel para limpar qualquer cache de conexão.",
     } : null
   });
 });

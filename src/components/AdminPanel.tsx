@@ -31,10 +31,14 @@ export default function AdminPanel() {
   const [supabaseError, setSupabaseError] = useState<string | null>(null);
 
   const fetchSettings = async () => {
-    const res = await fetch('/api/settings');
-    if (res.ok) {
-      const data = await res.json();
-      setLogo(data.logo);
+    try {
+      const res = await fetch('/api/settings');
+      if (res.ok) {
+        const data = await res.json();
+        setLogo(data.logo);
+      }
+    } catch (e) {
+      console.error('Error fetching settings:', e);
     }
   };
 
@@ -116,14 +120,18 @@ export default function AdminPanel() {
   };
 
   const fetchClients = async () => {
-    const res = await fetch('/api/admin/clients', {
-      headers: { 'Authorization': `Bearer ${password}` }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setClients(data);
-    } else {
-      setIsLoggedIn(false);
+    try {
+      const res = await fetch('/api/admin/clients', {
+        headers: { 'Authorization': `Bearer ${password}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setClients(data);
+      } else if (res.status === 401) {
+        setIsLoggedIn(false);
+      }
+    } catch (e) {
+      console.error('Error fetching clients:', e);
     }
   };
 
@@ -162,10 +170,16 @@ export default function AdminPanel() {
   };
 
   const fetchPhotos = async (clientId: string) => {
-    const res = await fetch(`/api/client/${clientId}`);
-    const data = await res.json();
-    setPhotos(data.photos || []);
-    setSelectedClient(clientId);
+    try {
+      const res = await fetch(`/api/client/${clientId}`);
+      if (!res.ok) throw new Error('Falha ao buscar fotos');
+      const data = await res.json();
+      setPhotos(data.photos || []);
+      setSelectedClient(clientId);
+    } catch (e) {
+      console.error('Error fetching photos:', e);
+      alert('Erro ao carregar fotos do cliente');
+    }
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

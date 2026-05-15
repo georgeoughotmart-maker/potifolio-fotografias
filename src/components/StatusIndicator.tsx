@@ -7,6 +7,7 @@ export default function StatusIndicator() {
     supabaseUrl: string | null;
     version: string;
     loading: boolean;
+    internetStatus: boolean;
     setupGuide: any;
     diagnostic: any;
   }>({
@@ -15,6 +16,7 @@ export default function StatusIndicator() {
     supabaseUrl: null,
     version: '',
     loading: true,
+    internetStatus: true,
     setupGuide: null,
     diagnostic: null
   });
@@ -30,6 +32,7 @@ export default function StatusIndicator() {
         supabaseUrl: data.currentUrl || null,
         version: data.version || '0.0.0',
         loading: false,
+        internetStatus: data.internetStatus ?? true,
         setupGuide: data.setupGuide || null,
         diagnostic: data.diagnostic || null
       });
@@ -51,11 +54,18 @@ export default function StatusIndicator() {
 
   return (
     <>
-      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 bg-black/80 backdrop-blur-sm border border-white/10 px-3 py-1.5 rounded-full text-[10px] text-white/60">
+      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 bg-black/80 backdrop-blur-sm border border-white/10 px-3 py-1.5 rounded-full text-[10px] text-white/60 shadow-xl">
         <div 
+          title="Status Supabase"
           className={`w-2 h-2 rounded-full ${status.supabaseConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'}`}
         />
-        <span>v{status.version}</span>
+        {!status.internetStatus && (
+          <div 
+            title="Sem Internet"
+            className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.5)]"
+          />
+        )}
+        <span className="font-mono">v{status.version}</span>
         {status.errorDetail && (
           <button 
             onClick={() => setShowHelp(true)}
