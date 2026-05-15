@@ -43,6 +43,14 @@ async function startServer() {
     let value: string | null = null;
     let foundSource: string | null = null;
     
+    // Log finding keys (unmasked keys names, masked values)
+    if (name === 'SUPABASE_URL') {
+      const found = allKeys.filter(k => variants.some(v => v.toUpperCase() === k.toUpperCase()));
+      if (found.length > 0) {
+        console.log(`>>> [CONFIG] Found keys for ${name}:`, found);
+      }
+    }
+
     // 1. Precise match
     for (const v of variants) {
       if (process.env[v]) {
@@ -62,39 +70,44 @@ async function startServer() {
     }
 
     if (value) {
-      // Remove quotes, all types of whitespace, and invisible characters
-      value = value.replace(/^["']|["']$/g, '').replace(/\s+/g, '').replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
+      // 1. Remove quotes
+      value = value.replace(/^["']|["']$/g, '');
       
+      // 2. Remove ANY whitespace
+      value = value.replace(/\s/g, '').replace(/\u00A0/g, '');
+      
+      // 3. Remove non-printable / invisible characters
+      value = value.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
+
       if (name === 'SUPABASE_URL') {
-        // 1. Fix only Project ID paste (20 chars hex/alphanumeric)
-        if (value.length === 20 && /^[a-z0-9]+$/i.test(value)) {
+        // RADICAL cleanup - only URL allowed chars
+        value = value.replace(/[^a-zA-Z0-9.\-:/]/g, '');
+        
+        // Fix if only ID pasted
+        if (value.length >= 15 && value.length <= 30 && !value.includes('.')) {
           value = `https://${value.toLowerCase()}.supabase.co`;
         }
 
-        // 2. Remove common path suffixes
+        // Remove path suffixes
         value = value.replace(/\/+$/, '')
                      .split('/rest/v1')[0]
                      .split('/auth/v1')[0]
                      .split('/storage/v1')[0]
                      .split('/api/v1')[0];
         
-        // 3. Detect hostname without protocol
         if (value.includes('supabase.co') && !value.includes('://')) {
           value = `https://${value}`;
         }
         
-        // 4. Final normalization using URL object if possible
         try {
-          const urlToParse = value.includes('://') ? value : `https://${value}`;
-          const urlObj = new URL(urlToParse);
+          const urlObj = new URL(value.includes('://') ? value : `https://${value}`);
           value = urlObj.origin;
         } catch (e) {
-          // Fallback manual cleanup
           value = value.replace(/^(https?:\/\/)+/i, '');
           if (value) value = `https://${value}`;
         }
         
-        console.log(`>>> [DEBUG] Final Sanitized ${name}: "${value}"`);
+        console.log(`>>> [CONFIG] ${name} Final: "${value}"`);
       }
     }
     
@@ -165,7 +178,9 @@ app.get("/api/health", async (req, res) => {
           const cause = fetchErr.cause ? String(fetchErr.cause) : "";
           
           if (msg.includes('ENOTFOUND') || cause.includes('ENOTFOUND')) {
-            errorDetail = `URL NÃO ENCONTRADA (DNS): O endereço "${supabaseUrl}" não existe. Verifique se copiou corretamente do painel do Supabase (Project Settings > API > Project URL).`;
+            errorDetail = `URL NÃO ENCONTRADA (DNS): O endereço "${supabaseUrl}" não existe no sistema da Supabase. `;
+            errorDetail += `Verifique se o ID "${supabaseUrl?.split('//')[1]?.split('.')[0]}" está correto. `;
+            errorDetail += `Isso acontece se o projeto foi deletado, pausado ou se houve erro de digitação.`;
           } else if (msg.includes('fetch failed')) {
             errorDetail = `FALHA DE CONEXÃO: O servidor não conseguiu alcançar o Supabase ("${supabaseUrl}"). `;
             if (supabaseUrl.includes('supabase.co')) {
@@ -190,14 +205,21 @@ app.get("/api/health", async (req, res) => {
     status: "ok", 
     supabaseConnected,
     errorDetail,
-    version: "2.1.9",
+    version: "2.4.2",
     passwordSource: passSource,
     currentUrl: supabaseUrl || "Não configurado",
+    diagnostic: {
+      projectId: supabaseUrl?.split('//')[1]?.split('.')[0] || null,
+      hasKey: !!getVarValue('SUPABASE_SERVICE_ROLE_KEY'),
+      envSource: getVarSource('SUPABASE_URL')
+    },
     setupGuide: !supabaseConnected ? {
-      step1: "Se despausou agora, o DNS pode levar 5-10 min para voltar.",
-      step2: "Confirme se a URL no Supabase (Settings > API) é idêntica à da Vercel.",
-      step3: "Verifique se você copiou a 'service_role' key, não a 'anon' key.",
-      step4: "Clique em 'Redeploy' na Vercel para limpar caches de conexão.",
+      dns_error: errorDetail?.includes('ENOTFOUND') ? "A URL não foi encontrada no DNS. Verifique se o ID do projeto no Supabase está correto." : null,
+      paused_error: errorDetail?.includes('fetch failed') ? "O projeto pode estar pausado ou o Supabase com instabilidade." : null,
+      step1: "Se despausou agora, o DNS pode levar até 15 min para propagar.",
+      step2: "Confirme se o ID do projeto exibido no diagnóstico acima é o correto.",
+      step3: "Verifique se você copiou a 'service_role' key (chave longa), não a 'anon'.",
+      step4: "Clique em 'Redeploy' na Vercel para forçar o reinício da conexão.",
     } : null
   });
 });
@@ -540,12 +562,24 @@ app.get("/api/health", async (req, res) => {
   });
 
   const distPath = path.join(process.cwd(), 'dist');
-  
-  // Serve static files from 'dist' if they exist
-  app.use(express.static(distPath));
+  const indexHtmlInDist = path.join(distPath, 'index.html');
+  const indexHtmlInRoot = path.join(process.cwd(), 'index.html');
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  // Serve static files from 'dist' if they exist
+  if (fs.existsSync(distPath)) {
+    console.log(`>>> [SERVER] Serving static files from: ${distPath}`);
+    try {
+      const files = fs.readdirSync(distPath);
+      console.log(`>>> [SERVER] Files in dist:`, files);
+    } catch (e) {}
+    app.use(express.static(distPath));
+  }
+
+  // Vite middleware for development (ONLY if dist doesn't exist or we are explicitly in dev)
+  const isDev = process.env.NODE_ENV !== "production" && !process.env.VERCEL;
+  
+  if (isDev && !fs.existsSync(distPath)) {
+    console.log(">>> [SERVER] Starting Vite middleware (Dev Mode)...");
     try {
       const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
@@ -554,25 +588,25 @@ app.get("/api/health", async (req, res) => {
       });
       app.use(vite.middlewares);
     } catch (e) {
-      console.error("Vite failed to load:", e);
+      console.error(">>> [SERVER] Vite failed to load:", e);
     }
-  } else {
-    // Production / Vercel fallback
-    app.get('*', (req, res) => {
-      const p = path.join(distPath, 'index.html');
-      if (fs.existsSync(p)) {
-        res.sendFile(p);
-      } else {
-        // Fallback for when 'dist' folder is missing or index.html is in root
-        const rootP = path.join(process.cwd(), 'index.html');
-        if (fs.existsSync(rootP)) {
-          res.sendFile(rootP);
-        } else {
-          res.status(404).send("Error: index.html not found in dist or root. Check build output.");
-        }
-      }
-    });
   }
+
+  // SPA Fallback
+  app.get('*', (req, res) => {
+    // Basic API 404
+    if (req.url.startsWith('/api')) {
+      return res.status(404).json({ error: "API route not found" });
+    }
+
+    if (fs.existsSync(indexHtmlInDist)) {
+      res.sendFile(indexHtmlInDist);
+    } else if (fs.existsSync(indexHtmlInRoot)) {
+      res.sendFile(indexHtmlInRoot);
+    } else {
+      res.status(404).send("Error: index.html not found. Check build output.");
+    }
+  });
 
   // Error handler
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -591,12 +625,12 @@ export default async (req: any, res: any) => {
   return app(req, res);
 };
 
-// Local development
-if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+// Control process: Listen if not on Vercel
+if (!process.env.VERCEL) {
   appPromise.then(app => {
-    const PORT = 3000;
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+    const PORT = process.env.PORT || 3000;
+    app.listen(Number(PORT), "0.0.0.0", () => {
+      console.log(`>>> [SERVER] Running on http://0.0.0.0:${PORT}`);
     });
   });
 }

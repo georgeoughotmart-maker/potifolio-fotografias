@@ -8,13 +8,15 @@ export default function StatusIndicator() {
     version: string;
     loading: boolean;
     setupGuide: any;
+    diagnostic: any;
   }>({
     supabaseConnected: false,
     errorDetail: null,
     supabaseUrl: null,
     version: '',
     loading: true,
-    setupGuide: null
+    setupGuide: null,
+    diagnostic: null
   });
 
   const checkStatus = async () => {
@@ -28,7 +30,8 @@ export default function StatusIndicator() {
         supabaseUrl: data.currentUrl || null,
         version: data.version || '0.0.0',
         loading: false,
-        setupGuide: data.setupGuide || null
+        setupGuide: data.setupGuide || null,
+        diagnostic: data.diagnostic || null
       });
     } catch (e) {
       console.error('Status check failed:', e);
@@ -76,16 +79,18 @@ export default function StatusIndicator() {
                 {status.errorDetail}
               </p>
               {status.supabaseUrl && (
-                <p className="mt-2 pt-2 border-t border-red-500/20 text-[9px] text-red-500/60 font-mono">
-                  URL Atual: {status.supabaseUrl}
-                </p>
+                <div className="mt-2 pt-2 border-t border-red-500/20 text-[9px] text-red-500/60 font-mono space-y-1">
+                  <p>URL Atual: {status.supabaseUrl}</p>
+                  {status.diagnostic?.projectId && <p>Project ID Detectado: {status.diagnostic.projectId}</p>}
+                  {status.diagnostic?.envSource && <p>Origem: {status.diagnostic.envSource}</p>}
+                </div>
               )}
             </div>
 
             {status.setupGuide && (
               <div className="space-y-4 mb-6">
                 <p className="text-white/40 text-[10px] uppercase tracking-wider font-bold">Guia de Configuração</p>
-                {Object.values(status.setupGuide).map((step: any, i) => (
+                {Object.values(status.setupGuide).filter(v => v !== null).map((step: any, i) => (
                   <div key={i} className="flex gap-3 items-start">
                     <span className="bg-white/5 text-white/40 w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0">{i+1}</span>
                     <p className="text-white/80 text-xs">{step}</p>
