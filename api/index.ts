@@ -52,7 +52,7 @@ async function startServer() {
     const aliases: Record<string, string[]> = {
       'SUPABASE_URL': ['SUPABASE_URL', 'URL_DO_SUPABASE', 'URL_SUPABASE', 'NEXT_PUBLIC_SUPABASE_URL'],
       'SUPABASE_SERVICE_ROLE_KEY': ['SUPABASE_SERVICE_ROLE_KEY', 'CHAVE_DO_SUPABASE', 'CHAVE_SUPABASE', 'SUPABASE_KEY', 'SUPABASE_ANON_KEY'],
-      'ADMIN_PASSWORD': ['ADMIN_PASSWORD', 'SENHA_DE_ADMINISTRADOR', 'SENHA_ADMIN', 'SENHA_ADMINISTRADOR', 'ENSAIO']
+      'ADMIN_PASSWORD': ['ADMIN_PASSWORD', 'SENHA_ADMIN', 'SENHA_ADMINISTRADOR']
     };
 
     const variants = (aliases[name] || [name]);
@@ -90,11 +90,16 @@ async function startServer() {
       // 1. Remove quotes
       value = value.replace(/^["']|["']$/g, '');
       
-      // 2. Remove ANY whitespace
-      value = value.replace(/\s/g, '').replace(/\u00A0/g, '');
-      
-      // 3. Remove non-printable / invisible characters
-      value = value.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
+      // 2. Cleanup logic
+      if (name === 'SUPABASE_URL' || name === 'SUPABASE_SERVICE_ROLE_KEY') {
+        // RADICAL cleanup for these keys - remove ALL whitespace and non-printable
+        value = value.replace(/\s/g, '').replace(/\u00A0/g, '');
+        value = value.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
+      } else {
+        // For passwords: only trim start/end and remove invisible characters, keep internal spaces if any
+        value = value.trim();
+        value = value.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '');
+      }
 
       if (name === 'SUPABASE_URL') {
         // RADICAL cleanup - only URL allowed chars
@@ -229,7 +234,7 @@ app.get("/api/health", async (req, res) => {
     status: "ok", 
     supabaseConnected,
     errorDetail,
-    version: "2.4.5",
+    version: "2.4.7",
     internetStatus,
     passwordSource: passSource,
     currentUrl: supabaseUrl || "Não configurado",
